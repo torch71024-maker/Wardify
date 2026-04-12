@@ -569,6 +569,40 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 .wfy-loading-text{font-family:'Cinzel',serif;font-size:.85rem;letter-spacing:.12em;color:rgba(200,180,255,.7);}
 #wardify-app{display:none;}
 @media(max-width:520px){.wfy-grid{grid-template-columns:1fr 1fr;gap:.7rem;}.wfy-card{padding:1rem .9rem;}.wfy-icon{font-size:1.4rem;}}
+
+/* ─── SETTINGS MODAL ─── */
+#wfy-settings-overlay{position:fixed;inset:0;z-index:9800;display:none;align-items:center;justify-content:center;background:rgba(0,0,10,.85);backdrop-filter:blur(4px);}
+#wfy-settings-overlay.open{display:flex;}
+#wfy-settings-modal{background:#0a0a1e;border:1px solid rgba(160,140,255,.25);border-radius:18px;padding:1.8rem 1.8rem 1.4rem;width:min(500px,92vw);max-height:88vh;overflow-y:auto;box-shadow:0 16px 60px rgba(0,0,0,.8);font-family:'Crimson Pro',serif;color:#e8e4f8;}
+.wfy-s-title{font-family:'Cinzel',serif;font-size:1.15rem;letter-spacing:.12em;color:#c9a84c;margin-bottom:1.4rem;text-align:center;}
+.wfy-s-section{margin-bottom:1.2rem;}
+.wfy-s-label{font-family:'Cinzel',serif;font-size:.68rem;letter-spacing:.14em;color:rgba(180,170,255,.45);text-transform:uppercase;margin-bottom:.5rem;padding-bottom:.3rem;border-bottom:1px solid rgba(255,255,255,.07);}
+.wfy-s-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;padding:.5rem .6rem;border-radius:10px;margin-bottom:.3rem;background:rgba(255,255,255,.03);}
+.wfy-s-row-text{font-size:.9rem;color:#ddd8f0;line-height:1.3;}
+.wfy-s-row-sub{font-size:.73rem;color:rgba(180,170,255,.4);font-style:italic;margin-top:.1rem;}
+.wfy-toggle{position:relative;width:42px;height:23px;flex-shrink:0;}
+.wfy-toggle input{opacity:0;width:0;height:0;position:absolute;}
+.wfy-toggle-track{position:absolute;inset:0;border-radius:23px;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.14);transition:background .2s,border-color .2s;cursor:pointer;}
+.wfy-toggle input:checked+.wfy-toggle-track{background:rgba(100,80,220,.65);border-color:rgba(160,140,255,.55);}
+.wfy-toggle-thumb{position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:transform .2s;pointer-events:none;}
+.wfy-toggle input:checked~.wfy-toggle-thumb{transform:translateX(19px);}
+.wfy-s-books{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.4rem;}
+.wfy-s-book-btn{background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.1);border-radius:9px;padding:.55rem .65rem;cursor:pointer;text-align:left;transition:all .15s;font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.05em;color:#ccc8e8;}
+.wfy-s-book-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);}
+.wfy-s-book-btn.active{border-color:#c9a84c;background:rgba(201,168,76,.14);color:#c9a84c;}
+.wfy-s-pw-row{display:flex;gap:.45rem;margin-top:.45rem;}
+.wfy-s-pw-input{flex:1;background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.1);border-radius:7px;padding:.4rem .65rem;color:#e8e4f8;font-family:'Crimson Pro',serif;font-size:.88rem;outline:none;}
+.wfy-s-pw-input:focus{border-color:rgba(160,140,255,.5);}
+.wfy-s-pw-btn{background:rgba(80,60,180,.55);border:1.5px solid rgba(160,140,255,.4);border-radius:7px;padding:.4rem .85rem;color:#ddd8f0;font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.07em;cursor:pointer;white-space:nowrap;transition:background .15s;}
+.wfy-s-pw-btn:hover{background:rgba(100,80,210,.7);}
+.wfy-s-pw-msg{font-size:.78rem;font-style:italic;margin-top:.28rem;min-height:.85rem;}
+.wfy-s-pw-msg.ok{color:#6dda8a;}.wfy-s-pw-msg.err{color:#e07070;}
+
+.wfy-s-contact{font-size:.76rem;color:rgba(180,170,255,.38);text-align:center;margin-top:.8rem;line-height:1.55;}
+.wfy-s-contact a{color:rgba(200,185,255,.55);text-decoration:none;}
+.wfy-s-contact a:hover{text-decoration:underline;color:rgba(200,185,255,.8);}
+.wfy-s-close{display:block;width:100%;margin-top:1rem;padding:.48rem;background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:rgba(180,170,255,.45);font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.12em;cursor:pointer;transition:all .15s;}
+.wfy-s-close:hover{background:rgba(255,255,255,.05);color:#ddd8f0;}
 </style>
 </head>
 <body>
@@ -582,11 +616,62 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
   </div>
 </div>
 <div id="wardify-loading"><div class="wfy-spinner"></div><div class="wfy-loading-text">Loading…</div></div>
+
+<!-- Settings Modal -->
+<div id="wfy-settings-overlay">
+  <div id="wfy-settings-modal">
+    <div class="wfy-s-title">&#9881;&#65039;&nbsp; Settings</div>
+
+    <div class="wfy-s-section">
+      <div class="wfy-s-label">Display</div>
+      <div class="wfy-s-row">
+        <div><div class="wfy-s-row-text">Moving Backgrounds</div><div class="wfy-s-row-sub">Animated canvas behind each chapter</div></div>
+        <label class="wfy-toggle">
+          <input type="checkbox" id="wfy-s-bg" checked/>
+          <div class="wfy-toggle-track"></div><div class="wfy-toggle-thumb"></div>
+        </label>
+      </div>
+      <div class="wfy-s-row">
+        <div><div class="wfy-s-row-text">Light Mode</div><div class="wfy-s-row-sub">Force light theme throughout</div></div>
+        <label class="wfy-toggle">
+          <input type="checkbox" id="wfy-s-light"/>
+          <div class="wfy-toggle-track"></div><div class="wfy-toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+
+    <div class="wfy-s-section">
+      <div class="wfy-s-label">Study Material <span style="color:rgba(180,170,255,.35);font-size:.63rem;"> &mdash; Default: Acts</span></div>
+      <div class="wfy-s-books" id="wfy-s-books"></div>
+    </div>
+
+    <div class="wfy-s-section">
+      <div class="wfy-s-label">Offline Download</div>
+      <div class="wfy-s-row" style="flex-direction:column;align-items:flex-start;gap:.3rem;">
+        <div class="wfy-s-row-text">Download this app for offline use</div>
+        <div class="wfy-s-row-sub">Enter the access password to unlock download</div>
+        <div class="wfy-s-pw-row">
+          <input class="wfy-s-pw-input" type="password" id="wfy-s-pw" placeholder="Password…"/>
+          <button class="wfy-s-pw-btn" id="wfy-s-pw-btn">Download</button>
+        </div>
+        <div class="wfy-s-pw-msg" id="wfy-s-pw-msg"></div>
+      </div>
+    </div>
+
+    <div class="wfy-s-contact">
+      For material requests or errors, contact<br/>
+      <a href="/cdn-cgi/l/email-protection#b6c2d9c4d5de8187868482f6d1dbd7dfda98d5d9db"><span class="__cf_email__" data-cfemail="4e3a213c2d26797f7e7c7a0e29232f2722602d2123">[email&#160;protected]</span></a><br/>
+      Edits will be made shortly!
+    </div>
+
+    <button class="wfy-s-close" onclick="document.getElementById('wfy-settings-overlay').classList.remove('open')">Close</button>
+  </div>
+</div>
 <div id="wardify-app">
   <div id="bg-layer"><canvas id="bg-a"></canvas><canvas id="bg-b"></canvas></div>
   <div id="root"></div>
 </div>
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 /* ════════════════════════════════════════════════════════════
    COMPETITION CONFIG  —  Upstash Redis
    ════════════════════════════════════════════════════════════
@@ -1853,7 +1938,7 @@ const BgMgr = {
 window.BgMgr=BgMgr;
 })();
 </script>
-<script type="wardify/app" data-book="john">
+<script type="wardify/data" data-book="john">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -2995,7 +3080,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="john">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(' ');
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -3404,12 +3490,7 @@ function KeywordQuiz({ onBack }) {
               <div className="kq-choices">
                 {sortedChs.map(ch=>{
                   let cls='kq-choice';
-                  if(answered){
-                    if(ch===current.ch) cls+=' kq-reveal';
-                    else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
-                  return (
-                    <button key={ch} className={cls} disabled={answered}
+            cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
                       Ch {ch}
                     </button>
@@ -6952,11 +7033,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -9004,7 +9085,7 @@ window.bgAmberDrag=bgAmberDrag;
 window.bgForestGrid=bgForestGrid;
 })();
 </script>
-<script type="wardify/app" data-book="acts">
+<script type="wardify/data" data-book="acts">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -10008,7 +10089,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="acts">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(' ');
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -13818,11 +13900,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -16852,7 +16934,7 @@ window.bgAmberDrag=bgAmberDrag;
 window.bgForestGrid=bgForestGrid;
 })();
 </script>
-<script type="wardify/app" data-book="matt">
+<script type="wardify/data" data-book="matt">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -17980,7 +18062,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="matt">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(' ');
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -21839,11 +21922,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -23004,7 +23087,7 @@ window.bgAmberDrag=bgAmberDrag;
 window.bgForestGrid=bgForestGrid;
 })();
 </script>
-<script type="wardify/app" data-book="luke">
+<script type="wardify/data" data-book="luke">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -24074,7 +24157,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="luke">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(' ');
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -27892,11 +27976,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -29287,7 +29371,7 @@ const BgMgr = {
 window.BgMgr=BgMgr;
 })();
 </script>
-<script type="wardify/app" data-book="cor">
+<script type="wardify/data" data-book="cor">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -30267,7 +30351,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="cor">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(/[\s\u2014\u2013]+/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -33952,11 +34037,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -35350,7 +35435,7 @@ const BgMgr = {
 window.BgMgr=BgMgr;
 })();
 </script>
-<script type="wardify/app" data-book="gepc">
+<script type="wardify/data" data-book="gepc">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -36123,7 +36208,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="gepc">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(/[\s\u2014\u2013]+/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -39793,11 +39879,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -41091,7 +41177,7 @@ const BgMgr = {
 window.BgMgr=BgMgr;
 })();
 </script>
-<script type="wardify/app" data-book="romjam">
+<script type="wardify/data" data-book="romjam">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -41902,7 +41988,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="romjam">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(/[\s\u2014\u2013]+/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -45262,11 +45349,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -46892,7 +46979,7 @@ const BgMgr = {
 window.BgMgr=BgMgr;
 })();
 </script>
-<script type="wardify/app" data-book="hebpet">
+<script type="wardify/data" data-book="hebpet">
 const { useState, useMemo, useEffect, useRef } = React;
 
 const CHAPTERS_DATA = [
@@ -47632,7 +47719,8 @@ const LEVELS=[
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
 ];
-
+</script>
+<script type="wardify/jsx" data-book="hebpet">
 function ReadingVerse({verse, ch, showJump}){
   const words = verse.t.split(/[\s\u2014\u2013]+/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
@@ -51307,11 +51395,11 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
               </div>
             ))}
           <div className="tool-card"
-            style={{background:"rgba(100,0,0,.28)",border:"1.5px solid rgba(255,60,60,.5)",cursor:"pointer"}}
-            onClick={function(){ window.wardifyGoBack(); }}>
-            <div className="tool-card-icon">⬅️</div>
-            <div className="tool-card-name">Different Material</div>
-            <div className="tool-card-desc">Return to book picker — choose a different study set</div>
+            style={{background:"rgba(30,25,70,.55)",border:"1.5px solid rgba(160,140,255,.4)",cursor:"pointer"}}
+            onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
+            <div className="tool-card-icon">⚙️</div>
+            <div className="tool-card-name">Settings</div>
+            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
           </div>
           </div>
 
@@ -51929,24 +52017,228 @@ function activateBook(bookId){
     document.head.appendChild(bgEl);
     if(window.BgMgr&&window.BgMgr.init)window.BgMgr.init();
   }
-  var appTag=document.querySelector('script[type="wardify/app"][data-book="'+bookId+'"]');
+  var dataTag=document.querySelector('script[type="wardify/data"][data-book="'+bookId+'"]');
+  var jsxTag=document.querySelector('script[type="wardify/jsx"][data-book="'+bookId+'"]');
   if(!_compiled[bookId]){
-    _compiled[bookId]=Babel.transform(appTag.textContent,{presets:['react']}).code;
+    /* Only compile JSX portion (~125KB) — not full ~300KB */
+    _compiled[bookId]=Babel.transform(jsxTag.textContent,{presets:['react']}).code;
   }
   document.getElementById('wardify-loading').classList.remove('show');
   document.getElementById('wardify-picker').style.display='none';
   document.getElementById('wardify-app').style.display='block';
-  (new Function(_compiled[bookId]))();
+  /* Run data (plain JS) + compiled JSX together */
+  (new Function(dataTag.textContent+'\n'+_compiled[bookId]))();
 }
 
 var _saved=localStorage.getItem('wardify_book');
-if(_saved&&document.querySelector('script[type="wardify/app"][data-book="'+_saved+'"]')){
+if(_saved&&document.querySelector('script[type="wardify/jsx"][data-book="'+_saved+'"]')){
   document.getElementById('wardify-loading').classList.add('show');
   document.getElementById('wardify-picker').style.display='none';
   requestAnimationFrame(function(){setTimeout(function(){activateBook(_saved);},80);});
 }else{
   startPickerAnim();
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   WARDIFY SETTINGS
+   Stored in localStorage under key 'wardify_settings'
+   Schema: { bg: bool, light: bool, book: string }
+   ═══════════════════════════════════════════════════════════ */
+
+var WFY_SK = 'wardify_settings';
+
+function wfyGetS(){
+  try{ var r=localStorage.getItem(WFY_SK); return r?JSON.parse(r):{bg:true,light:false,book:'acts'}; }
+  catch(e){ return {bg:true,light:false,book:'acts'}; }
+}
+function wfySetS(s){ try{ localStorage.setItem(WFY_SK,JSON.stringify(s)); }catch(e){} }
+
+/*
+ * Theme rules:
+ *   bg ON,  light OFF → normal animated chapters (BgMgr controls theme)
+ *   bg ON,  light ON  → normal animated chapters BUT force white bg + dark text
+ *   bg OFF, light OFF → solid black bg, white text
+ *   bg OFF, light ON  → solid white bg, black text
+ */
+function wfyApply(s){
+  var layer = document.getElementById('bg-layer');
+
+  if(!s.bg){
+    /* Kill all canvas animations */
+    if(window.BgMgr && BgMgr.stops){
+      try{ BgMgr.stops.forEach(function(fn){if(fn)fn();}); BgMgr.stops=[null,null]; }catch(e){}
+    }
+    if(layer) layer.style.visibility = 'hidden';
+
+    if(s.light){
+      /* bg OFF + light ON = white bg, black text */
+      document.documentElement.classList.add('theme-light');
+      document.documentElement.setAttribute('data-wfy-forced','light');
+      document.body.style.backgroundColor = '#ffffff';
+      document.body.style.color = '#111';
+    } else {
+      /* bg OFF + dark = black bg, white text */
+      document.documentElement.classList.remove('theme-light');
+      document.documentElement.setAttribute('data-wfy-forced','dark');
+      document.body.style.backgroundColor = '#000000';
+      document.body.style.color = '#fff';
+    }
+  } else {
+    /* Backgrounds ON — restore canvas layer */
+    if(layer) layer.style.visibility = 'visible';
+    document.documentElement.removeAttribute('data-wfy-forced');
+    document.body.style.color = '';
+
+    if(s.light){
+      /* Force light theme override on top of animated bgs */
+      document.documentElement.classList.add('theme-light');
+      document.body.style.backgroundColor = '#f5efe6';
+    } else {
+      /* Let BgMgr control theme per chapter */
+      document.documentElement.classList.remove('theme-light');
+      document.body.style.backgroundColor = '';
+      /* Re-trigger current chapter so BgMgr resets bg colour */
+      if(window.BgMgr && BgMgr.current > 0){
+        var ch = BgMgr.current;
+        BgMgr.current = -1;
+        BgMgr.setChapter(ch);
+      }
+    }
+  }
+}
+
+/* CSS injected once to handle forced theme state for ALL elements */
+(function(){
+  var styleId = 'wfy-forced-style';
+  if(document.getElementById(styleId)) return;
+  var el = document.createElement('style');
+  el.id = styleId;
+  el.textContent =
+    /* bg OFF dark: everything dark */
+    '[data-wfy-forced=dark] #wardify-app { background:#000!important; }' +
+    '[data-wfy-forced=dark] #bg-layer { visibility:hidden!important; }' +
+    '[data-wfy-forced=dark] .wrap, [data-wfy-forced=dark] .tools-page,' +
+    '[data-wfy-forced=dark] .kq-page, [data-wfy-forced=dark] .drag-page,' +
+    '[data-wfy-forced=dark] .lb-page { background:#000!important; color:#eee!important; }' +
+    /* bg OFF light: everything light */
+    '[data-wfy-forced=light] #wardify-app { background:#fff!important; }' +
+    '[data-wfy-forced=light] #bg-layer { visibility:hidden!important; }' +
+    '[data-wfy-forced=light] .wrap, [data-wfy-forced=light] .tools-page,' +
+    '[data-wfy-forced=light] .kq-page, [data-wfy-forced=light] .drag-page,' +
+    '[data-wfy-forced=light] .lb-page { background:#fff!important; color:#111!important; }' +
+    /* Ensure canvas bg-layer never bleeds through when hidden */
+    '#bg-layer { transition: visibility 0s; }';
+  document.head.appendChild(el);
+})();
+
+/* ── Open settings modal ── */
+window.wardifyOpenSettings = function(){
+  var s = wfyGetS();
+
+  var bgEl = document.getElementById('wfy-s-bg');
+  var ltEl = document.getElementById('wfy-s-light');
+  if(bgEl){ bgEl.checked = s.bg;
+    bgEl.onchange = function(){
+      var s2=wfyGetS(); s2.bg=this.checked; wfySetS(s2); wfyApply(s2);
+      if(s2.bg && window.BgMgr && BgMgr.init){ try{BgMgr.init();}catch(e){} }
+    };
+  }
+  if(ltEl){ ltEl.checked = s.light;
+    ltEl.onchange = function(){ var s2=wfyGetS(); s2.light=this.checked; wfySetS(s2); wfyApply(s2); };
+  }
+
+  /* Book buttons */
+  var booksEl = document.getElementById('wfy-s-books');
+  if(booksEl){
+    booksEl.innerHTML = '';
+    BOOKS.forEach(function(book){
+      var btn = document.createElement('button');
+      btn.className = 'wfy-s-book-btn' + (book.id===s.book?' active':'');
+      btn.innerHTML = '<span style="font-size:.9em;margin-right:.3em">'+book.icon+'</span>'+book.title;
+      btn.onclick = function(){
+        var s2=wfyGetS(); s2.book=book.id; wfySetS(s2);
+        localStorage.setItem('wardify_book', book.id);
+        booksEl.querySelectorAll('.wfy-s-book-btn').forEach(function(b){b.classList.remove('active');});
+        btn.classList.add('active');
+        if(book.id !== window._wfy_currentBook){
+          document.getElementById('wfy-settings-overlay').classList.remove('open');
+          setTimeout(function(){
+            document.getElementById('wardify-loading').classList.add('show');
+            requestAnimationFrame(function(){
+              setTimeout(function(){
+                try{ReactDOM.unmountComponentAtNode(document.getElementById('root'));}catch(e){}
+                window.BgMgr = null;
+                activateBook(book.id);
+              }, 60);
+            });
+          }, 150);
+        }
+      };
+      booksEl.appendChild(btn);
+    });
+  }
+
+  var pwEl = document.getElementById('wfy-s-pw');
+  var pwMsg = document.getElementById('wfy-s-pw-msg');
+  if(pwEl) pwEl.value = '';
+  if(pwMsg){ pwMsg.textContent=''; pwMsg.className='wfy-s-pw-msg'; }
+
+  var pwBtn = document.getElementById('wfy-s-pw-btn');
+  if(pwBtn) pwBtn.onclick = wfyDownload;
+  if(pwEl) pwEl.onkeydown = function(e){ if(e.key==='Enter') wfyDownload(); };
+
+  document.getElementById('wfy-settings-overlay').classList.add('open');
+};
+
+/* Close on backdrop click */
+(function(){
+  var ov = document.getElementById('wfy-settings-overlay');
+  if(ov) ov.addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); });
+})();
+
+/* Download */
+function wfyDownload(){
+  var pwEl = document.getElementById('wfy-s-pw');
+  var pwMsg = document.getElementById('wfy-s-pw-msg');
+  var pw = (pwEl?pwEl.value:'').toLowerCase().trim();
+  if(pw !== 'offline'){
+    if(pwMsg){ pwMsg.textContent='Incorrect password.'; pwMsg.className='wfy-s-pw-msg err'; }
+    return;
+  }
+  if(pwMsg){ pwMsg.textContent='Preparing download\u2026'; pwMsg.className='wfy-s-pw-msg'; }
+  try{
+    var blob = new Blob([document.documentElement.outerHTML],{type:'text/html'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Wardify.html';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 600);
+    if(pwMsg){ pwMsg.textContent='Download started!'; pwMsg.className='wfy-s-pw-msg ok'; }
+    setTimeout(function(){ if(pwMsg) pwMsg.textContent=''; }, 3500);
+  } catch(ex){
+    if(pwMsg){ pwMsg.textContent='Error: '+ex.message; pwMsg.className='wfy-s-pw-msg err'; }
+  }
+}
+
+/* Track current book; apply settings after each activation (no overhead wrapper) */
+var _orig_activateBook = activateBook;
+activateBook = function(bookId){
+  window._wfy_currentBook = bookId;
+  _orig_activateBook(bookId);
+  /* requestAnimationFrame instead of setTimeout(250) — fires after React renders, no lag */
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){ wfyApply(wfyGetS()); });
+  });
+};
+
+/* Default to saved book on first load */
+(function(){
+  var s = wfyGetS();
+  if(!localStorage.getItem('wardify_book') && s.book){
+    localStorage.setItem('wardify_book', s.book);
+  }
+})();
 
 </script>
 </body>
