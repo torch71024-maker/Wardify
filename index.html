@@ -278,6 +278,14 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 .score-toast{font-family:'Cinzel',serif;font-size:.76rem;letter-spacing:.05em;background:rgba(0,0,0,.88);border:1px solid var(--c-accent);color:var(--c-accent);border-radius:10px;padding:.48rem .95rem;box-shadow:0 4px 18px rgba(201,162,39,.22);animation:s-in .28s ease,s-out .35s ease 1.7s forwards}
 @keyframes s-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes s-out{to{opacity:0;transform:translateY(-5px)}}
+
+/* ─── KEYWORD QUIZ VERSE REVEAL ─── */
+.kq-verse-reveal{font-family:'Crimson Pro',serif;font-size:1rem;color:var(--c-body);line-height:1.8;text-align:center;padding:.6rem .8rem .2rem;animation:kq-verse-in .3s ease}
+.kq-kw-highlight{font-weight:700;color:#7baeff}
+@keyframes kq-verse-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.kq-choice.kq-hinted{background:rgba(201,162,39,.15);border-color:var(--c-accent);color:var(--c-accent)}
+.kq-hint-btn{width:100%;font-family:'Cinzel',serif;font-size:.76rem;letter-spacing:.08em;padding:.58rem 1rem;border-radius:8px;border:1px solid var(--c-accent-a);background:rgba(201,162,39,.07);color:var(--c-accent);cursor:pointer;margin-top:.6rem;transition:all .18s;display:block}
+.kq-hint-btn:hover{background:rgba(201,162,39,.16);border-color:var(--c-accent)}
 </style>
 <style>
 :root {
@@ -3172,6 +3180,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -3224,6 +3235,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -3240,6 +3252,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -3254,10 +3267,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -3418,6 +3445,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`John ${ch} · v.${verse.v}`:`John ${ch}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -3455,7 +3505,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO CHAPTER {current.ch}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -3481,22 +3535,36 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
               <div className="kq-choices">
                 {sortedChs.map(ch=>{
                   let cls='kq-choice';
-            cls} disabled={answered}
+                  if(answered){
+                    if(ch===current.ch) cls+=' kq-reveal';
+                    else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
+                  return (
+                    <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
                       Ch {ch}
                     </button>
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -10181,6 +10249,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -10233,6 +10304,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -10249,6 +10321,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -10263,10 +10336,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -10427,6 +10514,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`Acts ${ch} · v.${verse.v}`:`Acts ${ch}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -10464,7 +10574,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO CHAPTER {current.ch}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -10490,9 +10604,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -10502,7 +10620,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -10511,6 +10629,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -18154,6 +18277,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -18206,6 +18332,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -18222,6 +18349,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -18236,10 +18364,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -18400,6 +18542,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`Matthew ${ch} · v.${verse.v}`:`Matthew ${ch}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -18437,7 +18602,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO CHAPTER {current.ch}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -18463,9 +18632,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -18475,7 +18648,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -18484,6 +18657,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -24249,6 +24427,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -24301,6 +24482,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -24317,6 +24499,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -24331,10 +24514,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -24376,7 +24573,7 @@ function KeywordQuiz({ onBack }) {
           <div className="kq-ch-grid">
             {allChapters.map(ch=>(
               <button key={ch} className={'kq-ch-btn'+(selChs.has(ch)?' kq-sel':'')}
-                onClick={()=>toggleCh(ch)}>{ch}</button>
+                onClick={()=>toggleCh(ch)}>{chLabel(ch).split(' ')[1]}</button>
             ))}
           </div>
           <div className="kq-sel-row">
@@ -24487,13 +24684,36 @@ function KeywordQuiz({ onBack }) {
         const map=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
         // find verse
         const entry=map[item];
-        return entry?`Luke ${ch} · v.${entry.v}`:`Luke ${ch}`;
+        return entry?`${chLabel(ch)} · v.${entry.v}`:`${chLabel(ch)}`;
       }
       // keyword
       const verse=CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.find(v=>
         v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
       );
-      return verse?`Luke ${ch} · v.${verse.v}`:`Luke ${ch}`;
+      return verse?`${chLabel(ch)} · v.${verse.v}`:`${chLabel(ch)}`;
+    }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
     }
 
     return (
@@ -24531,8 +24751,12 @@ function KeywordQuiz({ onBack }) {
 
           {reverseMode ? (
             <>
-              <div className="kq-q-label">WHICH {modeLabel} BELONGS TO CHAPTER {current.ch}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              <div className="kq-q-label">WHICH {modeLabel} BELONGS TO {chLabel(current.ch)}?</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{chLabel(current.ch).split(' ')[1]}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -24549,7 +24773,7 @@ function KeywordQuiz({ onBack }) {
                       disabled={answered}
                       onClick={()=>!answered&&handleAnswer(c.item)}>
                       {c.item}
-                      {answered && c.item===current.item && <span style={{float:'right',opacity:.6,fontSize:'.75rem'}}>Ch {c.ch}</span>}
+                      {answered && c.item===current.item && <span style={{float:'right',opacity:.6,fontSize:'.75rem'}}>{chLabel(c.ch)}</span>}
                     </button>
                   );
                 })}
@@ -24558,9 +24782,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -24570,24 +24798,29 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
-                      Ch {ch}
+                      {chLabel(ch)}
                     </button>
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
           <div className={'kq-feedback'+
             (answered?(isTimeout?' kq-fb-timeout':isCorrect?' kq-fb-correct':' kq-fb-wrong'):'')}>
             {answered
-              ? isTimeout ? `Time's up — ${reverseMode?`"${current.item}"`:''} Chapter ${current.ch}`
+              ? isTimeout ? `Time's up — ${reverseMode?`"${current.item}"`:''} ${chLabel(current.ch)}`
                 : isCorrect ? '✦ Correct!'
-                : reverseMode ? `✗  "${current.item}" — Chapter ${current.ch}` : `✗  Chapter ${current.ch}`
+                : reverseMode ? `✗  "${current.item}" — ${chLabel(current.ch)}` : `✗  ${chLabel(current.ch)}`
               : <span style={{opacity:0}}>·</span>}
           </div>
         </div>
@@ -24775,7 +25008,7 @@ function CustomPicker({ onBack, onApply }){
                 <button key={ch}
                   className={'cp-ch-btn'+(isOpen?' cp-ch-open':hasPicked?' cp-ch-has':'')}
                   onClick={()=>toggleChapter(ch)}>
-                  {ch}
+                  {chLabel(ch).split(' ')[1]}
                   {hasPicked && !isOpen && <span className="cp-ch-dot"/>}
                 </button>
               );
@@ -24794,7 +25027,7 @@ function CustomPicker({ onBack, onApply }){
           return (
             <div key={ch} className="cp-verses-block">
               <div className="cp-verses-header">
-                <span className="cp-verses-label">CHAPTER {ch}</span>
+                <span className="cp-verses-label">{chLabel(ch)}</span>
                 <div className="cp-verses-actions">
                   <button className="cp-mini-btn" onClick={()=>selectAllCh(ch)}>All</button>
                   <button className="cp-mini-btn" onClick={()=>clearCh(ch)}>None</button>
@@ -25096,13 +25329,13 @@ function ChapterStudyPage({ onBack }) {
           <div style={{display:'flex',alignItems:'center',gap:'1rem',paddingTop:'.6rem',marginBottom:'1.8rem'}}>
             <button className="kq-nav-btn" onClick={()=>setConfirmed(false)}>← Chapters</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.7rem',letterSpacing:'.12em',color:'var(--c-vmuted)'}}>
-              CHAPTER {selectedCh} MATERIAL
+              {chLabel(selectedCh)} MATERIAL
             </div>
           </div>
 
           <div style={{textAlign:'center',marginBottom:'2rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.6rem',letterSpacing:'.1em',color:'#d4c0f0',textShadow:'0 0 40px rgba(160,120,220,.4)'}}>
-              Chapter {selectedCh}
+              {chLabel(selectedCh)}
             </div>
             <div style={{fontStyle:'italic',fontSize:'.9rem',color:'rgba(180,160,220,.5)',marginTop:'.3rem'}}>
               {chData.verses.length} verses · {sections.length} section{sections.length!==1?'s':''}
@@ -25129,7 +25362,7 @@ function ChapterStudyPage({ onBack }) {
                     {verse.t}
                   </div>
                   <div style={{marginTop:'.5rem',fontFamily:'Cinzel,serif',fontSize:'.6rem',letterSpacing:'.08em',color:'rgba(180,160,220,.35)',textAlign:'right'}}>
-                    Luke {selectedCh}:{verse.v}
+                    {chLabel(selectedCh)}:{verse.v}
                   </div>
                 </div>
               );
@@ -25196,7 +25429,7 @@ function ChapterStudyPage({ onBack }) {
                   display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'.15rem',
                   boxShadow:on?'0 0 18px rgba(160,120,220,.25)':'none',
                 }}>
-                <span style={{fontSize:'.92rem'}}>{ch}</span>
+                <span style={{fontSize:'.92rem'}}>{chLabel(ch).split(' ')[1]}</span>
                 <span style={{fontSize:'.52rem',opacity:.6,letterSpacing:'.04em'}}>{secCount}sec</span>
               </button>
             );
@@ -25206,12 +25439,12 @@ function ChapterStudyPage({ onBack }) {
         {selectedCh && (
           <div style={{textAlign:'center',marginBottom:'1rem'}}>
             <div style={{fontStyle:'italic',fontSize:'.88rem',color:'rgba(180,160,220,.55)',marginBottom:'.9rem'}}>
-              Chapter {selectedCh} · {(CHAPTER_SECTIONS[selectedCh]||[]).length} sections · {CHAPTERS_DATA.find(c=>c.ch===selectedCh)?.verses.length} verses
+              {chLabel(selectedCh)} · {(CHAPTER_SECTIONS[selectedCh]||[]).length} sections · {CHAPTERS_DATA.find(c=>c.ch===selectedCh)?.verses.length} verses
             </div>
             <button className="btn btn-gold"
               style={{background:'linear-gradient(135deg,rgba(140,80,220,.35),rgba(100,60,180,.35))',border:'1px solid rgba(160,120,240,.5)',color:'#d4b8f8',fontSize:'.88rem',padding:'.65rem 2rem'}}
               onClick={()=>setConfirmed(true)}>
-              Study Chapter {selectedCh} →
+              Study {chLabel(selectedCh)} →
             </button>
           </div>
         )}
@@ -25452,7 +25685,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
                     const on=selChs.has(ch);
                     return <button key={ch} onClick={()=>setSelChs(p=>{const n=new Set(p);n.has(ch)?n.delete(ch):n.add(ch);return n;})}
                       style={{fontFamily:'Cinzel,serif',fontSize:'.72rem',width:'2.6rem',height:'2.6rem',borderRadius:7,border:`1px solid ${on?'rgba(160,120,255,0.6)':'rgba(90,90,110,0.35)'}`,background:on?'rgba(120,80,220,0.2)':'rgba(25,25,35,0.7)',color:on?'#c4a8ff':'rgba(160,160,180,0.45)',cursor:'pointer',transition:'all .15s'}}>
-                      {ch}</button>;
+                      {chLabel(ch).split(' ')[1]}</button>;
                   })}
                 </div>
                 <div style={{display:'flex',gap:'.5rem',justifyContent:'center'}}>
@@ -25496,7 +25729,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
                         border:`1px solid ${isOpen?'rgba(160,120,255,0.7)':hasPicked?'rgba(100,220,140,0.5)':'rgba(90,90,110,0.35)'}`,
                         background:isOpen?'rgba(120,80,220,0.2)':hasPicked?'rgba(80,180,100,0.1)':'rgba(25,25,35,0.7)',
                         color:isOpen?'#c4a8ff':hasPicked?'#80e098':'rgba(160,160,180,0.45)',cursor:'pointer',transition:'all .15s'}}>
-                      {ch}
+                      {chLabel(ch).split(' ')[1]}
                       {hasPicked&&!isOpen&&<span style={{position:'absolute',top:2,right:3,width:5,height:5,borderRadius:'50%',background:'#80e098'}}/>}
                     </button>;
                   })}
@@ -25507,7 +25740,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
                   return (
                     <div key={ch} style={{...dc,padding:'.7rem .9rem',marginBottom:'.5rem'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.5rem'}}>
-                        <span style={{fontFamily:'Cinzel,serif',fontSize:'.6rem',letterSpacing:'.1em',color:'rgba(160,120,255,0.7)'}}>CHAPTER {ch}</span>
+                        <span style={{fontFamily:'Cinzel,serif',fontSize:'.6rem',letterSpacing:'.1em',color:'rgba(160,120,255,0.7)'}}>{chLabel(ch)}</span>
                         <div style={{display:'flex',gap:'.35rem'}}>
                           <button onClick={()=>inlineSelectAll(ch)} style={{fontFamily:'Cinzel,serif',fontSize:'.58rem',padding:'.15rem .5rem',borderRadius:5,border:'1px solid rgba(90,90,110,0.35)',background:'rgba(30,30,40,0.6)',color:'rgba(160,160,180,0.5)',cursor:'pointer'}}>All</button>
                           <button onClick={()=>inlineClearCh(ch)} style={{fontFamily:'Cinzel,serif',fontSize:'.58rem',padding:'.15rem .5rem',borderRadius:5,border:'1px solid rgba(90,90,110,0.35)',background:'rgba(30,30,40,0.6)',color:'rgba(160,160,180,0.5)',cursor:'pointer'}}>None</button>
@@ -25623,7 +25856,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
             </div>
             {direction==='refFromVerse'
               ? <div style={{fontSize:'1.05rem',lineHeight:1.9,color:'#e0d8f8',fontStyle:'italic'}}>"{current.t}"</div>
-              : <div style={{fontFamily:'Cinzel,serif',fontSize:'1.75rem',letterSpacing:'.1em',color:'#c4a8ff',textAlign:'center',padding:'.4rem 0'}}>Luke {current.ch}:{current.v}</div>
+              : <div style={{fontFamily:'Cinzel,serif',fontSize:'1.75rem',letterSpacing:'.1em',color:'#c4a8ff',textAlign:'center',padding:'.4rem 0'}}>{chLabel(current.ch)}:{current.v}</div>
             }
           </div>
 
@@ -25642,7 +25875,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
                 <button key={i} disabled={answered} onClick={()=>!answered&&handlePick(ansVal)}
                   style={{textAlign:'left',padding:direction==='verseFromRef'?'.85rem 1.1rem':'.65rem 1.1rem',borderRadius:10,border:`1px solid ${bdr}`,background:bg,color:col,cursor:answered?'default':'pointer',transition:'all .14s',fontFamily:"'Crimson Pro',serif",lineHeight:1.7}}>
                   {direction==='refFromVerse'
-                    ? <span style={{fontFamily:'Cinzel,serif',fontSize:'.92rem',letterSpacing:'.05em'}}>Luke {ch.ch}:{ch.v}</span>
+                    ? <span style={{fontFamily:'Cinzel,serif',fontSize:'.92rem',letterSpacing:'.05em'}}>{chLabel(ch.ch)}:{ch.v}</span>
                     : <span style={{fontStyle:'italic',fontSize:'1rem'}}>"{ch.t}"</span>
                   }
                   {answered&&isCorr&&<span style={{float:'right',fontSize:'.8rem'}}>✓</span>}
@@ -25655,7 +25888,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
           {answered&&(
             <div style={{textAlign:'center',marginTop:'.75rem',fontFamily:'Cinzel,serif',fontSize:'.73rem',
               color:history[history.length-1]?.correct?'#44cc66':isTimeout?'#cc9944':'#cc4444'}}>
-              {history[history.length-1]?.correct?'✦ Correct!':isTimeout?`Time's up — Luke ${current.ch}:${current.v}`:`Correct: Luke ${current.ch}:${current.v}`}
+              {history[history.length-1]?.correct?'✦ Correct!':isTimeout?`Time's up — ${chLabel(current.ch)}:${current.v}`:`Correct: ${chLabel(current.ch)}:${current.v}`}
             </div>
           )}
           {answered&&(
@@ -25700,7 +25933,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
             <div key={i} style={{...dc,padding:'.55rem .9rem',display:'flex',gap:'.6rem',alignItems:'flex-start'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.68rem',color:h.correct?'#44cc66':'#cc4444',minWidth:'1.2rem'}}>{h.correct?'✓':'✗'}</span>
               <div style={{flex:1,minWidth:0}}>
-                <span style={{fontFamily:'Cinzel,serif',fontSize:'.7rem',color:'rgba(160,120,255,0.7)',marginRight:'.5rem'}}>Luke {h.ch}:{h.v}</span>
+                <span style={{fontFamily:'Cinzel,serif',fontSize:'.7rem',color:'rgba(160,120,255,0.7)',marginRight:'.5rem'}}>{chLabel(h.ch)}:{h.v}</span>
                 <span style={{fontSize:'.8rem',color:'rgba(200,195,215,0.7)',fontStyle:'italic'}}>{h.t.length>75?h.t.slice(0,75)+'…':h.t}</span>
               </div>
             </div>
@@ -26114,7 +26347,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                       border:`1px solid ${on?'rgba(35,110,210,0.55)':'rgba(80,160,255,0.2)'}`,
                       background:on?'rgba(35,110,210,0.1)':'rgba(255,255,255,0.55)',
                       color:on?'#1848a0':'rgba(50,120,200,0.42)'}}>
-                    {ch}</button>
+                    {chLabel(ch).split(' ')[1]}</button>
                 );})}
               </div>
               <div style={{display:'flex',gap:'.45rem',justifyContent:'center'}}>
@@ -26147,7 +26380,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                       border:`1px solid ${isO?'rgba(35,110,210,0.55)':isP?'rgba(35,160,80,0.5)':'rgba(80,160,255,0.2)'}`,
                       background:isO?'rgba(35,110,210,0.1)':isP?'rgba(35,160,80,0.1)':'rgba(255,255,255,0.55)',
                       color:isO?'#1848a0':isP?'#1a6035':'rgba(50,120,200,0.42)'}}>
-                    {ch}{isP&&!isO&&<span style={{position:'absolute',top:2,right:3,width:5,height:5,borderRadius:'50%',background:'#25b055'}}/>}
+                    {chLabel(ch).split(' ')[1]}{isP&&!isO&&<span style={{position:'absolute',top:2,right:3,width:5,height:5,borderRadius:'50%',background:'#25b055'}}/>}
                   </button>
                 );})}
               </div>
@@ -26156,7 +26389,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                 return(
                   <div key={ch} style={{...card,padding:'.65rem .85rem',marginBottom:'.45rem'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.45rem'}}>
-                      <span style={{fontFamily:'Cinzel,serif',fontSize:'.58rem',letterSpacing:'.1em',color:'rgba(30,100,210,0.65)'}}>CH. {ch}</span>
+                      <span style={{fontFamily:'Cinzel,serif',fontSize:'.58rem',letterSpacing:'.1em',color:'rgba(30,100,210,0.65)'}}>{chLabel(ch)}</span>
                       <div style={{display:'flex',gap:'.3rem'}}>
                         <button onClick={()=>pickAll(ch)} style={{fontFamily:'Cinzel,serif',fontSize:'.56rem',padding:'.12rem .45rem',borderRadius:5,border:'1px solid rgba(80,160,255,0.2)',background:'rgba(255,255,255,0.55)',color:'rgba(50,120,200,0.45)',cursor:'pointer'}}>All</button>
                         <button onClick={()=>clearCh(ch)} style={{fontFamily:'Cinzel,serif',fontSize:'.56rem',padding:'.12rem .45rem',borderRadius:5,border:'1px solid rgba(80,160,255,0.2)',background:'rgba(255,255,255,0.55)',color:'rgba(50,120,200,0.45)',cursor:'pointer'}}>None</button>
@@ -26289,7 +26522,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                       background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
                       display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
                       minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>Ch.{ch}</div>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch).split(' ')[1]}</div>
                     <svg width="24" height="21" viewBox="0 0 28 24">
                       <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
                       <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
@@ -26744,7 +26977,7 @@ function OddOneOutPage({ onBack }){
                     border:`1px solid ${on?'rgba(220,60,60,0.65)':'rgba(140,30,30,0.22)'}`,
                     background:on?'rgba(160,20,20,0.22)':'rgba(8,5,5,0.7)',
                     color:on?'rgba(240,110,110,0.9)':'rgba(140,50,50,0.38)',cursor:'pointer',transition:'all .14s'}}>
-                  {ch}</button>
+                  {chLabel(ch).split(' ')[1]}</button>
               );})}
             </div>
             <div style={{display:'flex',gap:'.45rem',justifyContent:'center'}}>
@@ -26889,7 +27122,7 @@ function OddOneOutPage({ onBack }){
             <div style={{...dc,padding:'.5rem 1rem',marginBottom:'.6rem',textAlign:'center',
               borderColor:'rgba(200,50,50,0.35)',background:'rgba(80,10,10,0.55)'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.6rem',letterSpacing:'.1em',color:'rgba(180,60,60,0.5)',marginRight:'.5rem'}}>THREE FROM</span>
-              <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'rgba(240,130,130,0.85)'}}>Chapter {homeCh}</span>
+              <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'rgba(240,130,130,0.85)'}}>{chLabel(homeCh)}</span>
             </div>
           )}
 
@@ -27036,7 +27269,7 @@ function SectionLocatorPage({ onBack }){
         const otherHeadings=pairs.filter(p=>p.ch!==pair.ch).map(p=>p.heading);
         const wrong=shuffleArr(otherHeadings).slice(0,3);
         const choices=shuffleArr([pair.heading,...wrong]);
-        return {prompt:`Chapter ${pair.ch}`,promptLabel:'Chapter',answer:pair.heading,choices,displayFn:h=>h};
+        return {prompt:`${chLabel(pair.ch)}`,promptLabel:'Chapter',answer:pair.heading,choices,displayFn:h=>h};
       }
     });
   }
@@ -27096,7 +27329,7 @@ function SectionLocatorPage({ onBack }){
                       border:`1px solid ${on?'rgba(80,210,145,0.65)':'rgba(50,140,90,0.22)'}`,
                       background:on?'rgba(30,140,80,0.2)':'rgba(5,18,12,0.7)',
                       color:on?'rgba(130,230,170,0.9)':'rgba(60,140,90,0.35)',cursor:'pointer',transition:'all .14s'}}>
-                    {ch}
+                    {chLabel(ch).split(' ')[1]}
                   </button>
                 );
               })}
@@ -27355,7 +27588,7 @@ function SituationQuotationsPage({ onBack }){
       speaker,
       context: text,
       fullQuote,
-      ref: `Luke ${ch}:${verse.v}`,
+      ref: `${chLabel(ch)}:${verse.v}`,
       ch,
       v: verse.v,
     }];
@@ -27518,7 +27751,7 @@ function SituationQuotationsPage({ onBack }){
                       border:`1px solid ${on?'rgba(0,0,0,0.6)':'rgba(0,0,0,0.25)'}`,
                       background:on?'rgba(0,0,0,0.5)':'rgba(255,255,255,0.2)',
                       color:on?'#f5e8a0':'rgba(0,0,0,0.5)',cursor:'pointer',transition:'all .14s'}}>
-                    {ch}
+                    {chLabel(ch).split(' ')[1]}
                   </button>
                 );
               })}
@@ -27694,7 +27927,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordRe.test(normalize(vv.t))) refs.push(`Luke ${cd.ch}:${vv.v}`);
+      if(wordRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
     }));
     setSearchRefs(refs);
   }
@@ -27728,7 +27961,7 @@ function AnswerJudgeMaterialPage({ onBack }){
                   transition:'all .15s', letterSpacing:'.04em'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='var(--c-card)';e.currentTarget.style.borderColor='var(--c-accent)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--c-sel)';e.currentTarget.style.borderColor='var(--c-accent-a)';}}>
-                {ch}
+                {chLabel(ch).split(' ')[1]}
               </button>
             ))}
           </div>
@@ -27750,7 +27983,7 @@ function AnswerJudgeMaterialPage({ onBack }){
         </div>
         <div style={{maxWidth:600, margin:'0 auto', padding:'5rem 1rem 4rem', fontFamily:"'Crimson Pro',serif", color:'var(--c-body)'}}>
           <div style={{textAlign:'center', marginBottom:'1.8rem', fontFamily:"'Cinzel',serif", fontSize:'1rem', letterSpacing:'.1em', color:'var(--c-accent)'}}>
-            CHAPTER {ajCh}
+            {chLabel(ajCh)}
           </div>
           <div style={{display:'flex', flexWrap:'wrap', gap:'.45rem', justifyContent:'center'}}>
             {verses.map(vv => (
@@ -27785,7 +28018,7 @@ function AnswerJudgeMaterialPage({ onBack }){
         fontFamily:"'Cinzel',serif", fontSize:'.7rem', color:'var(--c-muted)',
         background:'var(--c-sel)', padding:'.3rem .8rem', borderRadius:20,
         border:'1px solid var(--c-border)', pointerEvents:'none'}}>
-        Luke {ajCh}:{ajVerse}
+        {chLabel(ajCh)}:{ajVerse}
       </div>
 
       {/* Scrollable verse list */}
@@ -27805,7 +28038,7 @@ function AnswerJudgeMaterialPage({ onBack }){
             <div style={{fontFamily:"'Cinzel',serif", fontSize:'.65rem',
               color: cv.isSelected ? 'var(--c-accent)' : 'var(--c-vmuted)',
               minWidth:'2.8rem', paddingTop:'.25rem', letterSpacing:'.03em', flexShrink:0}}>
-              {cv.ch}:{cv.v}
+              {chLabel(cv.ch).split(' ')[1]}:{cv.v}
             </div>
             <div style={{flex:1, lineHeight:1.85, fontSize:'1.02rem',
               color: cv.isSelected ? 'var(--c-title)' : 'var(--c-body)'}}>
@@ -28293,13 +28526,13 @@ function App({ onScore }){
           : level===null
             ? (byChapter||[]).map(({ch,verses})=>(
                 <div key={ch}>
-                  <div className="ch-heading">CHAPTER {ch}</div>
+                  <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(<ReadingVerse key={`${ch}-${verse.v}`} verse={verse} ch={ch} showJump={showJump}/>))}
                 </div>
               ))
             : (byChapter||[]).map(({ch,verses})=>(
                 <div key={ch}>
-                  <div className="ch-heading">CHAPTER {ch}</div>
+                  <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted}
@@ -30443,6 +30676,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -30495,6 +30731,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -30511,6 +30748,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -30525,10 +30763,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -30689,6 +30941,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`${chLabel(ch)} · v.${verse.v}`:`${chLabel(ch)}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -30726,7 +31001,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO {chLabel(current.ch)}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -30752,9 +31031,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -30764,7 +31047,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -30773,6 +31056,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -36300,6 +36588,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -36352,6 +36643,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -36368,6 +36660,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -36382,10 +36675,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -36546,6 +36853,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`${chLabel(ch)} · v.${verse.v}`:`${chLabel(ch)}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -36583,7 +36913,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO {chLabel(current.ch)}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -36609,9 +36943,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -36621,7 +36959,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -36630,6 +36968,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -42080,6 +42423,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -42132,6 +42478,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -42148,6 +42495,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -42162,10 +42510,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -42326,6 +42688,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`${chLabel(ch)} · v.${verse.v}`:`${chLabel(ch)}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -42363,7 +42748,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO {chLabel(current.ch)}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -42389,9 +42778,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -42401,7 +42794,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -42410,6 +42803,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
@@ -47811,6 +48209,9 @@ function KeywordQuiz({ onBack }) {
   const [picked, setPicked]       = useState(null); // chapter/item user chose, or 'timeout'
   const [timeLeft, setTimeLeft]   = useState(TIMER_MAX);
   const [history, setHistory]     = useState([]);
+  const [hintsAvailable, setHintsAvailable] = useState(0);
+  const [hintUsedThisQ, setHintUsedThisQ]   = useState(false);
+  const [hintedChapters, setHintedChapters] = useState(null);
 
   const timerRef   = useRef(null);
   const autoRef    = useRef(null);
@@ -47863,6 +48264,7 @@ function KeywordQuiz({ onBack }) {
     const p=buildPool([...selChs]);
     if(p.length===0) return;
     setPool(p); setQIdx(0); setHistory([]); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null);
     choicesRef.current = {qIdx:-1, choices:null};
     setPhase('playing');
     if(window.BgMgr) window.BgMgr.setChapter([...selChs][0]);
@@ -47879,6 +48281,7 @@ function KeywordQuiz({ onBack }) {
       correct=!isTimeout && ans===current.ch;
     }
     setPicked(ans);
+    if(correct&&!hintUsedThisQ) setHintsAvailable(h=>h+1);
     setHistory(h=>[...h,{
       item:current.item, correctCh:current.ch,
       picked:ans, correct, timedOut:isTimeout,
@@ -47893,10 +48296,24 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){ setPhase('results'); return; }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
+    setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
   }
 
-  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+  function useHint(){
+    if(hintUsedThisQ||hintsAvailable<=0) return;
+    const cur=pool[qIdx];
+    const chs=[...selChs].sort((a,b)=>a-b);
+    const hintCount=Math.max(2,Math.ceil(chs.length/3));
+    const wrong=chs.filter(c=>c!==cur.ch);
+    const shuffled=wrong.slice().sort(()=>Math.random()-.5);
+    const hinted=new Set([cur.ch,...shuffled.slice(0,hintCount-1)]);
+    setHintedChapters(hinted);
+    setHintsAvailable(h=>h-1);
+    setHintUsedThisQ(true);
+  }
+
+  function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -48057,6 +48474,29 @@ function KeywordQuiz({ onBack }) {
       );
       return verse?`${chLabel(ch)} · v.${verse.v}`:`${chLabel(ch)}`;
     }
+    function getVerseText(item,ch){
+      if(phraseMode){
+        const rawMap=phraseMode==='2'?buildPhraseMap(2):buildPhraseMap(3);
+        const entry=rawMap[item];
+        if(!entry) return null;
+        const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+        const verse=chData&&chData.verses.find(v=>v.v===entry.v);
+        return verse?{text:verse.t,v:verse.v}:null;
+      }
+      const chData=CHAPTERS_DATA.find(c=>c.ch===ch);
+      const verse=chData&&chData.verses.find(v=>
+        v.t.split(/\s+/).some(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()===item)
+      );
+      return verse?{text:verse.t,v:verse.v}:null;
+    }
+    function highlightItem(text,item){
+      const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const regex=new RegExp('\\b('+escaped+')\\b','gi');
+      const parts=text.split(regex);
+      return parts.map((part,i)=>
+        i%2===1?React.createElement('strong',{key:i,className:'kq-kw-highlight'},part):part
+      );
+    }
 
     return (
       <div className="kq-wrap">
@@ -48094,7 +48534,11 @@ function KeywordQuiz({ onBack }) {
           {reverseMode ? (
             <>
               <div className="kq-q-label">WHICH {modeLabel} BELONGS TO {chLabel(current.ch)}?</div>
-              <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{current.ch}</div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -48120,9 +48564,13 @@ function KeywordQuiz({ onBack }) {
           ) : (
             <>
               <div className="kq-q-label">WHICH CHAPTER CONTAINS THIS {modeLabel}?</div>
-              <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
-                {current.item}
-              </div>
+              {answered?(
+                <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
+              ):(
+                <div className="kq-word" style={phraseMode?{fontSize:'1.35rem',letterSpacing:'.04em',fontFamily:"'Crimson Pro',serif",fontStyle:'italic'}:{}}>
+                  {current.item}
+                </div>
+              )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
               </div>
@@ -48132,7 +48580,7 @@ function KeywordQuiz({ onBack }) {
                   if(answered){
                     if(ch===current.ch) cls+=' kq-reveal';
                     else if(ch===picked&&!isCorrect) cls+=' kq-wrong';
-                  }
+                  } else if(hintedChapters&&hintedChapters.has(ch)) cls+=' kq-hinted';
                   return (
                     <button key={ch} className={cls} disabled={answered}
                       onClick={()=>!answered&&handleAnswer(ch)}>
@@ -48141,6 +48589,11 @@ function KeywordQuiz({ onBack }) {
                   );
                 })}
               </div>
+              {!answered&&selChs.size>=10&&hintsAvailable>0&&(
+                <button className="kq-hint-btn" onClick={useHint}>
+                  💡 Hint · {hintsAvailable} available
+                </button>
+              )}
             </>
           )}
 
