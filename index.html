@@ -606,11 +606,15 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 .wfy-s-pw-msg{font-size:.78rem;font-style:italic;margin-top:.28rem;min-height:.85rem;}
 .wfy-s-pw-msg.ok{color:#6dda8a;}.wfy-s-pw-msg.err{color:#e07070;}
 
-.wfy-s-contact{font-size:.76rem;color:rgba(180,170,255,.38);text-align:center;margin-top:.8rem;line-height:1.55;}
-.wfy-s-contact a{color:rgba(200,185,255,.55);text-decoration:none;}
+.wfy-s-contact{font-size:.76rem;color:rgba(180,170,255,.78);text-align:center;margin-top:.8rem;line-height:1.55;}
+.wfy-s-contact a{color:rgba(200,185,255,.92);text-decoration:none;}
 .wfy-s-contact a:hover{text-decoration:underline;color:rgba(200,185,255,.8);}
 .wfy-s-close{display:block;width:100%;margin-top:1rem;padding:.48rem;background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:rgba(180,170,255,.45);font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.12em;cursor:pointer;transition:all .15s;}
 .wfy-s-close:hover{background:rgba(255,255,255,.05);color:#ddd8f0;}
+@keyframes bsk-sway{0%,100%{transform:rotate(-2deg) translateY(0)}25%{transform:rotate(-0.5deg) translateY(-1px)}50%{transform:rotate(2deg) translateY(0)}75%{transform:rotate(0.5deg) translateY(-1px)}}
+@keyframes bsk-pop{0%{transform:scale(1) rotate(0deg)}20%{transform:scale(1.12) rotate(-3deg)}50%{transform:scale(0.96) rotate(2deg)}75%{transform:scale(1.04) rotate(-1deg)}100%{transform:scale(1) rotate(0deg)}}
+@keyframes item-sink{0%{transform:scale(1) translateY(0);opacity:1}55%{transform:scale(0.32) translateY(16px);opacity:0.55}100%{transform:scale(0) translateY(28px);opacity:0}}
+
 </style>
 </head>
 <body>
@@ -668,7 +672,7 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 
     <div class="wfy-s-contact">
       For material requests or errors, contact<br/>
-      <a href="/cdn-cgi/l/email-protection#b6c2d9c4d5de8187868482f6d1dbd7dfda98d5d9db"><span class="__cf_email__" data-cfemail="4e3a213c2d26797f7e7c7a0e29232f2722602d2123">[email&#160;protected]</span></a><br/>
+      <a href="mailto:torch71024@gmail.com">torch71024@gmail.com</a><br/>
       Edits will be made shortly!
     </div>
 
@@ -678,6 +682,13 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 <div id="wardify-app">
   <div id="bg-layer"><canvas id="bg-a"></canvas><canvas id="bg-b"></canvas></div>
   <div id="root"></div>
+</div>
+<div id="wfy-persistent-footer" style="position:fixed;bottom:0;left:0;width:100%;z-index:50;pointer-events:none;">
+  <div style="text-align:center;padding:.45rem .5rem;font-family:'Crimson Pro',serif;font-size:.72rem;color:rgba(180,170,255,.62);font-style:italic;line-height:1.6;background:linear-gradient(to top,rgba(13,2,33,.72) 0%,transparent 100%);pointer-events:all;">
+    For material requests or errors, contact
+    <a href="mailto:torch71024@gmail.com" style="color:rgba(210,195,255,.82);text-decoration:none;">torch71024@gmail.com</a>
+    &nbsp;&mdash;&nbsp;Edits will be made shortly!
+  </div>
 </div>
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 /* ════════════════════════════════════════════════════════════
@@ -4875,6 +4886,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -4992,6 +5006,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -5076,21 +5092,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -5107,6 +5111,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -5129,6 +5136,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -5299,19 +5309,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -5334,69 +5348,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
             </>}
           </div>
           {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>Ch.{ch}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         </div>
+        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -11860,6 +11949,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -11977,6 +12069,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -12061,21 +12155,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -12092,6 +12174,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -12114,6 +12199,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -12284,19 +12372,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -12319,69 +12411,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
             </>}
           </div>
           {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>Ch.{ch}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         </div>
+        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -19937,6 +20104,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -20054,6 +20224,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -20138,21 +20310,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -20169,6 +20329,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -20191,6 +20354,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -20361,19 +20527,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -20396,69 +20566,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
             </>}
           </div>
           {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>Ch.{ch}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         </div>
+        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -26046,6 +26291,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -26163,6 +26411,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -26247,21 +26497,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -26278,6 +26516,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -26300,6 +26541,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -26470,19 +26714,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -26504,70 +26752,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               </button>
             </>}
           </div>
-          {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+                    {/* Baskets */}
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch).split(' ')[1]}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </div>        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -32419,6 +32741,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -32536,6 +32861,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -32620,21 +32947,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -32651,6 +32966,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -32673,6 +32991,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -32843,19 +33164,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -32877,70 +33202,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               </button>
             </>}
           </div>
-          {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+                    {/* Baskets */}
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch)}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </div>        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -38316,6 +38715,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -38433,6 +38835,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -38517,21 +38921,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -38548,6 +38940,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -38570,6 +38965,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -38740,19 +39138,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -38774,70 +39176,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               </button>
             </>}
           </div>
-          {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+                    {/* Baskets */}
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch)}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </div>        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -44043,6 +44519,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -44160,6 +44639,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -44244,21 +44725,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -44275,6 +44744,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -44297,6 +44769,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -44467,19 +44942,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -44501,70 +44980,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               </button>
             </>}
           </div>
-          {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+                    {/* Baskets */}
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch)}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </div>        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
@@ -49942,6 +50495,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [activeChs,setActiveChs]=React.useState([]);
   const [roundItems,setRoundItems]=React.useState([]);
   const [placed,setPlaced]=React.useState({});  // {[itemId]: chapterNum}
+  const [placedOrder,setPlacedOrder]=React.useState([]);  // track insertion order
+  const [animItems,setAnimItems]=React.useState(new Set());
+  const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
@@ -50059,6 +50615,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       if(basket&&id){
         const ch=parseInt(basket.dataset.basketCh);
         setPlaced(prev=>({...prev,[id]:ch}));
+        setPlacedOrder(prev=>[...prev.filter(x=>x!==id),id]);
+        setAnimItems(prev=>{const n=new Set(prev);n.add(id);return n;});
         if(elemRef.current[id])elemRef.current[id].style.opacity='1';
       } else {
         if(id&&physRef.current[id]){
@@ -50143,21 +50701,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   }
 
   function buildRound(pool,used,chs){
+    const TARGET=30;
     const avail=pool.filter(i=>!used.has(i.id));
-    const byCh={};chs.forEach(ch=>{byCh[ch]={ftv:[],keyword:[],phrase2:[],phrase3:[]};});
-    avail.forEach(i=>{if(byCh[i.ch])byCh[i.ch][i.type].push(i);});
-    const round=[];
-    chs.forEach(ch=>{
-      const src=byCh[ch];
-      const picks=[];
-      // Guarantee at least 1 of each type, up to 2 each
-      ['ftv','keyword','phrase2','phrase3'].forEach(t=>{sh(src[t]).slice(0,2).forEach(i=>picks.push(i));});
-      // Fill up to 9 per chapter from remaining
-      const usedInPicks=new Set(picks.map(i=>i.id));
-      sh(avail.filter(i=>i.ch===ch&&!usedInPicks.has(i.id))).slice(0,Math.max(0,9-picks.length)).forEach(i=>picks.push(i));
-      sh(picks).forEach(i=>round.push(i));
-    });
-    return sh(round);
+    return sh(avail).slice(0,TARGET);
   }
 
   function startGame(){
@@ -50174,6 +50720,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
     setPhase('playing');
   }
@@ -50196,6 +50745,9 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
     setRoundItems(next);
     setPlaced({});
+    setPlacedOrder([]);
+    setAnimItems(new Set());
+    setBasketModal(null);
     setChecked(false);
   }
 
@@ -50366,19 +50918,23 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               {roundItems.map(item=>{
                 const s=ts(item.type);
                 const isPlaced=placed[item.id]!==undefined;
+                const isSinking=animItems.has(item.id);
                 return(
                   <div key={item.id}
                     ref={el=>{if(el)elemRef.current[item.id]=el;else delete elemRef.current[item.id];}}
                     onMouseDown={e=>startDrag(e,item)}
                     onTouchStart={e=>startDrag(e,item)}
+                    onAnimationEnd={()=>{if(isSinking)setAnimItems(prev=>{const n=new Set(prev);n.delete(item.id);return n;});}}
                     style={{position:'absolute',left:0,top:0,
-                      display:isPlaced?'none':'flex',alignItems:'center',gap:'.28rem',
+                      display:(isPlaced&&!isSinking)?'none':'flex',alignItems:'center',gap:'.28rem',
                       padding:'.3rem .72rem',borderRadius:20,
                       background:s.bg,border:`1.5px solid ${s.bdr}`,color:s.txt,
                       fontFamily:"'Crimson Pro',serif",fontSize:'.88rem',
                       boxShadow:`0 2px 10px ${s.sh}`,
                       cursor:'grab',userSelect:'none',touchAction:'none',WebkitUserSelect:'none',
-                      whiteSpace:'nowrap',zIndex:4}}>
+                      whiteSpace:'nowrap',zIndex:isSinking?5:4,
+                      animation:isSinking?'item-sink 0.38s cubic-bezier(0.55,0,1,0.8) forwards':undefined,
+                      pointerEvents:isSinking?'none':undefined}}>
                     <span style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',color:s.dot,letterSpacing:'.05em',opacity:.85}}>{item.label}</span>
                     {item.text}
                   </div>
@@ -50400,70 +50956,144 @@ function DragStudyPage({ onBack, initialCustomVerses }){
               </button>
             </>}
           </div>
-          {/* Baskets */}
-          <div style={{background:'rgba(255,255,255,0.88)',border:'1px solid rgba(80,160,255,0.18)',borderRadius:'12px 12px 0 0',borderBottom:'none',
-            padding:'.4rem .38rem .5rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(60,140,255,0.07)'}}>
-            <div style={{fontFamily:'Cinzel,serif',fontSize:'.44rem',letterSpacing:'.14em',color:'rgba(30,90,200,0.3)',textAlign:'center',marginBottom:'.28rem'}}>DRAG INTO CHAPTER BASKET</div>
+                    {/* Baskets */}
+          <div style={{background:'linear-gradient(to bottom,rgba(240,218,178,0.96),rgba(222,196,148,0.92))',
+            border:'1px solid rgba(110,72,32,0.22)',borderRadius:'12px 12px 0 0',borderBottom:'none',
+            padding:'.32rem .38rem .4rem',flexShrink:0,boxShadow:'0 -2px 12px rgba(80,48,16,0.12)'}}>
+            <div style={{fontFamily:'Cinzel,serif',fontSize:'.42rem',letterSpacing:'.13em',color:'rgba(92,51,23,0.5)',textAlign:'center',marginBottom:'.2rem'}}>DROP INTO BASKET · CLICK TO VIEW</div>
             <div style={{display:'flex',gap:'.32rem',overflowX:'auto',WebkitOverflowScrolling:'touch',
-              justifyContent:activeChs.length<=5?'center':'flex-start',paddingBottom:2}}>
+              justifyContent:activeChs.length<=6?'center':'flex-start',paddingBottom:2}}>
               {activeChs.map((ch,ci)=>{
-                const chItems=roundItems.filter(i=>placed[i.id]===ch);
-                const hues=[210,235,195,255,175,220,245,205];
-                const h=hues[ci%hues.length];
+                const chItems=[...roundItems.filter(i=>placed[i.id]===ch)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+                const brownPalette=[
+                  {fill:'#e8d5ae',stroke:'#5c3317',weave:'#7a4520',rim:'#7a4520',lbl:'#5c3317',shad:'rgba(92,51,23,0.35)',badge:'#7a4520'},
+                  {fill:'#dbbf96',stroke:'#4a2c14',weave:'#643c1c',rim:'#643c1c',lbl:'#4a2c14',shad:'rgba(74,44,20,0.35)',badge:'#643c1c'},
+                  {fill:'#e2cba5',stroke:'#5e3820',weave:'#7a4c28',rim:'#7a4c28',lbl:'#5e3820',shad:'rgba(94,56,32,0.35)',badge:'#7a4c28'},
+                  {fill:'#d9bc94',stroke:'#4a2810',weave:'#623616',rim:'#623616',lbl:'#4a2810',shad:'rgba(74,40,16,0.35)',badge:'#623616'},
+                  {fill:'#edcfa8',stroke:'#6a3e2c',weave:'#8a5036',rim:'#8a5036',lbl:'#6a3e2c',shad:'rgba(106,62,44,0.35)',badge:'#8a5036'},
+                  {fill:'#e0c8a0',stroke:'#553520',weave:'#6e4226',rim:'#6e4226',lbl:'#553520',shad:'rgba(85,53,32,0.35)',badge:'#6e4226'},
+                  {fill:'#d8c098',stroke:'#4c2e14',weave:'#643e1e',rim:'#643e1e',lbl:'#4c2e14',shad:'rgba(76,46,20,0.35)',badge:'#643e1e'},
+                  {fill:'#ebd5b3',stroke:'#6e4430',weave:'#8c583c',rim:'#8c583c',lbl:'#6e4430',shad:'rgba(110,68,48,0.35)',badge:'#8c583c'},
+                ];
+                const bk=brownPalette[ci%brownPalette.length];
                 return(
                   <div key={ch} data-basket-ch={ch}
-                    style={{flex:activeChs.length<=5?'1 1 0':'0 0 auto',
-                      minWidth:activeChs.length<=5?'58px':'82px',maxWidth:150,
-                      border:`1.5px dashed hsla(${h},65%,55%,0.45)`,borderRadius:10,
-                      background:`hsla(${h},85%,97%,0.95)`,padding:'.32rem .22rem .38rem',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:'.2rem',
-                      minHeight:78}}>
-                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',letterSpacing:'.03em',color:`hsla(${h},55%,32%,0.85)`}}>{chLabel(ch)}</div>
-                    <svg width="24" height="21" viewBox="0 0 28 24">
-                      <path d="M3 9 Q14 7 25 9 L23 21 Q14 23 5 21 Z" fill="none" stroke={`hsla(${h},55%,40%,0.5)`} strokeWidth="1.5"/>
-                      <line x1="8.5" y1="9" x2="9.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="14" y1="9" x2="14" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <line x1="19.5" y1="9" x2="18.5" y2="21" stroke={`hsla(${h},55%,40%,0.22)`} strokeWidth="0.8"/>
-                      <path d="M10 2 Q14 6 18 2" fill="none" stroke={`hsla(${h},55%,40%,0.45)`} strokeWidth="1.5" strokeLinecap="round"/>
+                    onClick={()=>setBasketModal(ch)}
+                    style={{flex:'1 1 0',
+                      minWidth:activeChs.length<=6?'54px':'64px',maxWidth:110,
+                      cursor:'pointer',position:'relative',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:0,
+                      transition:'transform .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
+                    onMouseLeave={e=>e.currentTarget.style.transform=''}>
+                    <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                    <svg width="100%" viewBox="0 0 48 42" overflow="visible"
+                      style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
+                        filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
+                      <path d="M15 14 Q24 3 33 14" fill="none" stroke={bk.stroke} strokeWidth="2.5" strokeLinecap="round"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill={bk.fill}/>
+                      <line x1="4" y1="21" x2="44" y2="21" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="4.5" y1="27" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="5.5" y1="33" x2="42.5" y2="33" stroke={bk.weave} strokeWidth="1" strokeOpacity="0.52"/>
+                      <line x1="11" y1="14" x2="9" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="16.5" y1="12" x2="15" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="22" y1="11" x2="22" y2="40" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="27.5" y1="12" x2="29" y2="39" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="33" y1="14" x2="35.5" y2="38" stroke={bk.weave} strokeWidth="0.9" strokeOpacity="0.36"/>
+                      <line x1="4" y1="24" x2="13" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="24" x2="22" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="24" x2="33" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="24" x2="44" y2="21" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="4.5" y1="30" x2="13" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="15" y1="30" x2="22" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="25" y1="30" x2="33" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <line x1="35" y1="30" x2="43.5" y2="27" stroke={bk.weave} strokeWidth="0.6" strokeOpacity="0.22"/>
+                      <path d="M3 15 Q24 11 45 15" fill="none" stroke={bk.rim} strokeWidth="2.2"/>
+                      <path d="M3 15 Q24 11 45 15 L41 38 Q24 41 7 38 Z" fill="none" stroke={bk.stroke} strokeWidth="1.3"/>
+                      <path d="M4 16.5 Q24 13 44 16.5" fill="none" stroke={bk.stroke} strokeWidth="0.7" strokeOpacity="0.25"/>
                     </svg>
-                    <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'.12rem'}}>
-                      {chItems.map(item=>{
-                        const s=ts(item.type);
-                        const corr=checked&&placed[item.id]===item.ch;
-                        const wrng=checked&&placed[item.id]!==item.ch;
-                        return(
-                          <div key={item.id}
-                            onClick={()=>{
-                              if(!checked){
-                                const tray=trayRef.current;
-                                const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
-                                const p=physRef.current[item.id];
-                                if(p){
-                                  p.x=W/2-p.w/2+(Math.random()-.5)*50;
-                                  p.y=H/2-p.h/2+(Math.random()-.5)*50;
-                                  const ang=Math.random()*Math.PI*2;
-                                  p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
-                                }
-                                setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
-                              }
-                            }}
-                            style={{fontSize:'.64rem',padding:'.17rem .28rem',borderRadius:6,textAlign:'center',
-                              wordBreak:'break-word',lineHeight:1.3,
-                              border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
-                              background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
-                              color:wrng?'#c01818':corr?'#1a6035':s.txt,
-                              cursor:checked?'default':'pointer',userSelect:'none'}}>
-                            {item.text}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {chItems.length>0&&(
+                      <div style={{position:'absolute',top:16,right:1,
+                        background:bk.badge,color:'#fff8f0',
+                        fontFamily:'Cinzel,serif',fontSize:'.5rem',fontWeight:700,
+                        minWidth:14,height:14,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:'0 1px 4px rgba(0,0,0,0.38)',padding:'0 2px',lineHeight:1}}>{chItems.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-        </div>
+        </div>        {/* Basket Modal */}
+        {basketModal!==null&&(()=>{
+          const modalCh=basketModal;
+          const modalItems=[...roundItems.filter(i=>placed[i.id]===modalCh)].sort((a,b)=>placedOrder.lastIndexOf(b.id)-placedOrder.lastIndexOf(a.id));
+          return(
+            <div onClick={()=>setBasketModal(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.52)',zIndex:8000,
+                display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:'#fdf6ea',borderRadius:16,padding:'1.1rem 1.2rem',
+                  maxWidth:340,width:'100%',maxHeight:'65vh',overflow:'hidden',
+                  display:'flex',flexDirection:'column',
+                  boxShadow:'0 14px 44px rgba(80,40,10,0.32)',border:'2px solid rgba(120,80,40,0.28)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem',flexShrink:0}}>
+                  <span style={{fontFamily:'Cinzel,serif',fontSize:'.88rem',color:'#5c3317',fontWeight:600,letterSpacing:'.04em'}}>
+                    Ch. {modalCh}
+                  </span>
+                  {!checked&&<span style={{fontFamily:"'Crimson Pro',serif",fontSize:'.72rem',color:'rgba(92,51,23,0.5)',fontStyle:'italic'}}>tap to return</span>}
+                  <button onClick={()=>setBasketModal(null)}
+                    style={{background:'none',border:'none',cursor:'pointer',fontSize:'1.1rem',color:'#8b5a2b',lineHeight:1,padding:'0 .2rem'}}>✕</button>
+                </div>
+                {modalItems.length===0?(
+                  <div style={{fontStyle:'italic',color:'#a07858',fontSize:'.85rem',textAlign:'center',
+                    padding:'1rem 0',fontFamily:"'Crimson Pro',serif"}}>Empty basket</div>
+                ):(
+                  <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'.32rem'}}>
+                    {modalItems.map(item=>{
+                      const s=ts(item.type);
+                      const corr=checked&&placed[item.id]===item.ch;
+                      const wrng=checked&&placed[item.id]!==item.ch;
+                      return(
+                        <div key={item.id}
+                          onClick={()=>{
+                            if(!checked){
+                              const tray=trayRef.current;
+                              const W=tray?.offsetWidth||300,H=tray?.offsetHeight||200;
+                              const p=physRef.current[item.id];
+                              if(p){
+                                p.x=W/2-p.w/2+(Math.random()-.5)*50;
+                                p.y=H/2-p.h/2+(Math.random()-.5)*50;
+                                const ang=Math.random()*Math.PI*2;
+                                p.vx=Math.cos(ang)*1.4;p.vy=Math.sin(ang)*1.4;
+                              }
+                              setPlaced(prev=>{const n={...prev};delete n[item.id];return n;});
+                              setPlacedOrder(prev=>prev.filter(x=>x!==item.id));
+                              setBasketModal(null);
+                            }
+                          }}
+                          style={{fontSize:'.82rem',padding:'.3rem .5rem',borderRadius:8,
+                            display:'flex',alignItems:'center',gap:'.38rem',
+                            border:`1px solid ${wrng?'rgba(210,40,40,0.45)':corr?'rgba(30,160,70,0.45)':s.bdr}`,
+                            background:wrng?'#ffe8e8':corr?'#e8f8ef':s.bg,
+                            color:wrng?'#c01818':corr?'#1a6035':s.txt,
+                            cursor:checked?'default':'pointer',userSelect:'none',
+                            fontFamily:"'Crimson Pro',serif"}}>
+                          <span style={{fontFamily:'Cinzel,serif',fontSize:'.48rem',color:s.dot,opacity:.8,flexShrink:0}}>{item.label}</span>
+                          <span style={{flex:1}}>{item.text}</span>
+                          {corr&&<span style={{color:'#1a8040',fontSize:'.9rem'}}>✓</span>}
+                          {wrng&&<span style={{color:'#cc2020',fontSize:'.9rem'}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {/* Ghost */}
         {ghost&&(()=>{
           const s=ts(ghost.item.type);
