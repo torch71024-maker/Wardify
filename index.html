@@ -1,16 +1,301 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<html lang="en"><head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js" integrity="sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+      (function() {
+        const originalConsole = window.console;
+        window.console = {
+          log: (...args) => {
+            originalConsole.log(...args);
+            window.parent.postMessage({ type: 'console', message: args.join(' ') }, '*');
+          },
+          error: (...args) => {
+            originalConsole.error(...args);
+            window.parent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
+          },
+          warn: (...args) => {
+            originalConsole.warn(...args);
+            window.parent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
+          }
+        };
+
+        let requestId = 0;
+        let callbacksMap = new Map();
+        let streamControllers = new Map();
+        
+        window.claude = {
+          complete: (prompt) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
+            });
+          }
+        };
+
+        window.storage = {
+          get: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageGet', id, key, shared }, '*');
+            });
+          },
+          set: (key, value, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
+            });
+          },
+          delete: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
+            });
+          },
+          list: (prefix, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
+            });
+          }
+        };
+
+        let pendingBlobs = new Map();
+        URL.createObjectURL = (blob) => {
+          // Store the blob and create an ID and URL for it
+          const blobId = `blob-${Date.now()}-${Math.random()}`;
+          pendingBlobs.set(blobId, blob);
+          return `blob-request://${blobId}`;
+        };
+
+        URL.revokeObjectURL = (url) => {
+          // Remove the blob from our store
+          const blobId = url.replace("blob-request://", "");
+          pendingBlobs.delete(blobId);
+        };
+
+        const getBlobFromURL = (url) => {
+          const blobId = url.replace("blob-request://", "");
+          return pendingBlobs.get(blobId);
+        };
+
+        // Override global fetch with streaming support
+        window.fetch = (url, init = {}) => {
+          return new Promise((resolve, reject) => {
+            const id = requestId++;
+            const channelId = `fetch-${id}-${Date.now()}`;
+            
+            callbacksMap.set(id, { 
+              resolve: (response) => {
+                // Create a ReadableStream for the response body
+                const stream = new ReadableStream({
+                  start(controller) {
+                    streamControllers.set(channelId, controller);
+                  },
+                  cancel() {
+                    streamControllers.delete(channelId);
+                  }
+                });
+                
+                // Create and return the Response with the stream
+                resolve(new Response(stream, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers
+                }));
+              },
+              reject,
+              channelId
+            });
+            
+            window.parent.postMessage({
+              type: 'proxyFetch',
+              id,
+              url,
+              init,
+              channelId
+            }, '*');
+          });
+        };
+
+        window.addEventListener('message', async (event) => {
+          if (event.data.type === 'takeScreenshot') {
+            const rootElement = document.getElementById('artifacts-component-root-html');
+            if (!rootElement) {
+              window.parent.postMessage({
+                type: 'screenshotError',
+                error: new Error('Root element not found'),
+              }, '*');
+            }
+            const screenshot = await htmlToImage.toPng(rootElement, {
+              imagePlaceholder:
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
+            });
+            window.parent.postMessage({
+              type: 'screenshotData',
+              data: screenshot,
+            }, '*');
+          } else if (event.data.type === 'claudeComplete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.completion);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'proxyFetchResponse') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+              callbacksMap.delete(event.data.id);
+            } else {
+              // Initial response with headers, status, etc.
+              callback.resolve({
+                status: event.data.status,
+                statusText: event.data.statusText,
+                headers: event.data.headers
+              });
+              // Don't delete the callback yet if streaming
+              if (!event.data.body) {
+                callbacksMap.delete(event.data.id);
+              }
+            }
+          } else if (event.data.type === 'proxyFetchStream') {
+            // Handle streaming data chunks
+            const controller = streamControllers.get(event.data.channelId);
+            if (controller) {
+              if (event.data.error) {
+                controller.error(new Error(event.data.error));
+                streamControllers.delete(event.data.channelId);
+              } else if (event.data.done) {
+                controller.close();
+                streamControllers.delete(event.data.channelId);
+                // Clean up the callback
+                const callback = Array.from(callbacksMap.entries()).find(
+                  ([_, value]) => value.channelId === event.data.channelId
+                );
+                if (callback) {
+                  callbacksMap.delete(callback[0]);
+                }
+              } else if (event.data.chunk) {
+                controller.enqueue(new Uint8Array(event.data.chunk));
+              }
+            }
+          } else if (event.data.type === 'storageGet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageSet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageDelete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageList') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          }
+        });
+
+        window.addEventListener('click', (event) => {
+          const isEl = event.target instanceof HTMLElement;
+          if (!isEl) return;
+    
+          // find ancestor links
+          const linkEl = event.target.closest("a");
+          if (!linkEl || !linkEl.href) return;
+    
+          event.preventDefault();
+          event.stopImmediatePropagation();
+    
+          if (linkEl.href.startsWith("blob-request:")) {
+            const blob = getBlobFromURL(linkEl.href);
+            if (!blob) return;
+            void blob.arrayBuffer().then((data) => {
+              window.parent.postMessage({
+                type: "downloadFile",
+                filename: linkEl.download,
+                data,
+                mimeType: blob.type || "application/octet-stream",
+              });
+            });
+          } else if (linkEl.href.startsWith("data:")) {
+            const [header, base64Data] = linkEl.href.split(",");
+            const mimeMatch = header.match(/data:([^;]+)/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+            const binaryString = atob(base64Data);
+            const data = Uint8Array.from(binaryString, (c) =>
+              c.charCodeAt(0),
+            ).buffer;
+            window.parent.postMessage({
+              type: "downloadFile",
+              filename: linkEl.download,
+              data,
+              mimeType,
+            });
+          } else {
+            let linkUrl;
+            try {
+              linkUrl = new URL(linkEl.href);
+            } catch (error) {
+              return;
+            }
+    
+            if (linkUrl.hostname === window.location.hostname) return;
+      
+            window.parent.postMessage({
+              type: 'openExternal',
+              href: linkEl.href,
+            }, '*');
+          }
+      });
+
+        const originalOpen = window.open;
+        window.open = function (url) {
+          window.parent.postMessage({
+            type: "openExternal",
+            href: url,
+          }, "*");
+        };
+
+        window.addEventListener('error', (event) => {
+          window.parent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
+        });
+      })();
+    </script>
+  
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Wardify</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&amp;display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Cinzel:wght@400;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&amp;family=Cinzel:wght@400;600&amp;display=swap" rel="stylesheet">
 <style>
 :root {
   --c-title:#f5e6c8; --c-body:#ddd5c4; --c-muted:#8a7d6a; --c-vmuted:#5a5248;
@@ -616,45 +901,1214 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 @keyframes item-sink{0%{transform:scale(1) translateY(0);opacity:1}55%{transform:scale(0.32) translateY(16px);opacity:0.55}100%{transform:scale(0) translateY(28px);opacity:0}}
 
 </style>
-</head>
-<body>
-<div id="wardify-picker">
+<style id="wfy-forced-style">[data-wfy-forced=dark] #wardify-app { background:#000!important; }[data-wfy-forced=dark] #bg-layer { visibility:hidden!important; }[data-wfy-forced=dark] .wrap, [data-wfy-forced=dark] .tools-page,[data-wfy-forced=dark] .kq-page, [data-wfy-forced=dark] .drag-page,[data-wfy-forced=dark] .lb-page { background:#000!important; color:#eee!important; }[data-wfy-forced=light] #wardify-app { background:#fff!important; }[data-wfy-forced=light] #bg-layer { visibility:hidden!important; }[data-wfy-forced=light] .wrap, [data-wfy-forced=light] .tools-page,[data-wfy-forced=light] .kq-page, [data-wfy-forced=light] .drag-page,[data-wfy-forced=light] .lb-page { background:#fff!important; color:#111!important; }#bg-layer { transition: visibility 0s; }</style><script>
+/* ============================================================
+   JOHN QUIZ — ANIMATED BACKGROUNDS (21 chapters)
+   ============================================================ */
+(function(){
+'use strict';
+
+const LIGHT_CHAPTERS = new Set([2,4,6,8,10,12,14,16,18]);
+
+const BG_BASE_COLORS = {
+  1:'#1a0800',2:'#c8e6ff',3:'#020010',4:'#e8f4ff',5:'#000820',
+  6:'#fffef5',7:'#000a18',8:'#5ab4e8',9:'#050a1a',10:'#fff9fc',
+  11:'#080010',12:'#fff5f8',13:'#010a02',14:'#fffde0',15:'#07070f',
+  16:'#fffff5',17:'#040e18',18:'#f2f6ff',19:'#010a08',20:'#060010',21:'#000008'
+};
+
+/* ── helpers ── */
+function mkLoop(drawFn){
+  let raf, alive=true;
+  (function loop(){ if(!alive) return; drawFn(); raf=requestAnimationFrame(loop); })();
+  return ()=>{ alive=false; cancelAnimationFrame(raf); };
+}
+function initCanvas(c){
+  c.width=window.innerWidth; c.height=window.innerHeight;
+  return c.getContext('2d');
+}
+function makeResizer(c, onResize){
+  function fn(){ c.width=window.innerWidth; c.height=window.innerHeight; if(onResize) onResize(); }
+  window.addEventListener('resize',fn);
+  return ()=>window.removeEventListener('resize',fn);
+}
+
+/* ══════════════════════════════════════════════
+   Ch 1 — Sparks (DARK)
+══════════════════════════════════════════════ */
+function bgSparks(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#1a0800'; ctx.fillRect(0,0,W,H);
+  function mkP(){ return {x:W*(.15+Math.random()*.7),y:H+5,vx:(Math.random()-.5)*2.6,vy:-(1.4+Math.random()*5.2),life:1,decay:.007+Math.random()*.013,sz:1+Math.random()*3.2,hue:12+~~(Math.random()*50)}; }
+  const ps=Array.from({length:110},()=>{const p=mkP();p.y=Math.random()*H;p.life=Math.random();return p;});
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='rgba(26,8,0,.22)'; ctx.fillRect(0,0,W,H);
+    ps.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.vy+=.05; p.life-=p.decay;
+      if(p.life<=0||p.y>H+30) Object.assign(p,mkP());
+      ctx.save(); ctx.globalAlpha=Math.max(0,p.life);
+      ctx.shadowBlur=12; ctx.shadowColor=`hsl(${p.hue},100%,60%)`;
+      ctx.fillStyle=`hsl(${p.hue},100%,72%)`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(.4,p.sz*p.life),0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#1a0800';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 2 — Snow (LIGHT)
+══════════════════════════════════════════════ */
+function bgSnow(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const flakes=Array.from({length:140},()=>({x:Math.random()*W,y:Math.random()*H,r:1.2+Math.random()*3.6,spd:.45+Math.random()*1.4,drift:Math.random()*Math.PI*2,dSpd:.003+Math.random()*.006,spin:Math.random()*Math.PI*2,spinSpd:(Math.random()-.5)*.025}));
+  const stop=mkLoop(()=>{
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#c4e4ff'); g.addColorStop(1,'#eef8ff');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    const t=Date.now()*.001;
+    flakes.forEach(f=>{
+      f.y+=f.spd; f.x+=Math.sin(f.drift+t*f.dSpd)*.5; f.spin+=f.spinSpd;
+      if(f.y>H+10){f.y=-12;f.x=Math.random()*W;}
+      if(f.x>W+10) f.x=-10; if(f.x<-10) f.x=W+10;
+      ctx.save(); ctx.translate(f.x,f.y); ctx.rotate(f.spin);
+      ctx.globalAlpha=.72; ctx.strokeStyle='rgba(200,230,255,.95)';
+      ctx.shadowBlur=5; ctx.shadowColor='rgba(170,210,255,.9)'; ctx.lineWidth=f.r*.35;
+      for(let i=0;i<6;i++){ctx.rotate(Math.PI/3); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,f.r); ctx.stroke();}
+      ctx.restore();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 3 — Galaxy (DARK)
+══════════════════════════════════════════════ */
+function bgGalaxy(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#020010'; ctx.fillRect(0,0,W,H);
+  const stars=Array.from({length:320},()=>({x:Math.random()*W,y:Math.random()*H,r:.2+Math.random()*1.4,tw:Math.random()*Math.PI*2,twSpd:.018+Math.random()*.04}));
+  const armPs=[];
+  for(let arm=0;arm<4;arm++) for(let i=0;i<65;i++){
+    const r=(i/65)*Math.min(W,H)*.42, angle=arm*Math.PI/2+i*.19+(Math.random()-.5)*.35;
+    armPs.push({bx:W/2+Math.cos(angle)*r,by:H/2+Math.sin(angle)*r,r:.4+Math.random()*2,al:.3+Math.random()*.65,hue:arm%2===0?195+Math.random()*55:275+Math.random()*55});
+  }
+  let rot=0;
+  const stop=mkLoop(()=>{
+    rot+=.0004;
+    ctx.fillStyle='rgba(2,0,16,.32)'; ctx.fillRect(0,0,W,H);
+    stars.forEach(s=>{ s.tw+=s.twSpd; const a=.3+Math.sin(s.tw)*.35; ctx.globalAlpha=a; ctx.fillStyle='#eeeeFF'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill(); });
+    ctx.save(); ctx.translate(W/2,H/2); ctx.rotate(rot); ctx.translate(-W/2,-H/2);
+    armPs.forEach(p=>{ ctx.globalAlpha=p.al*.65; ctx.shadowBlur=5; ctx.shadowColor=`hsl(${p.hue},80%,60%)`; ctx.fillStyle=`hsl(${p.hue},80%,72%)`; ctx.beginPath(); ctx.arc(p.bx,p.by,p.r,0,Math.PI*2); ctx.fill(); });
+    ctx.restore(); ctx.globalAlpha=1;
+    const cg=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.min(W,H)*.14);
+    cg.addColorStop(0,'rgba(190,130,255,.28)'); cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.fillRect(0,0,W,H);
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#020010';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 4 — Bubbles (LIGHT)
+══════════════════════════════════════════════ */
+function bgBubbles(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  function mkB(){ return {x:Math.random()*W,y:H+Math.random()*H,r:10+Math.random()*46,spd:.28+Math.random()*.7,drift:Math.random()*Math.PI*2,dSpd:.005+Math.random()*.012,hue:175+Math.random()*125,wob:0,wobSpd:.01+Math.random()*.025}; }
+  const bs=Array.from({length:48},mkB);
+  const stop=mkLoop(()=>{
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#e6f8ff'); g.addColorStop(1,'#f4fef8');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    bs.forEach(b=>{
+      b.y-=b.spd; b.x+=Math.sin(b.drift+b.wob)*.55; b.wob+=b.wobSpd;
+      if(b.y<-b.r*2) Object.assign(b,mkB(),{y:H+b.r,x:Math.random()*W});
+      ctx.save(); ctx.globalAlpha=.38;
+      const sg=ctx.createRadialGradient(b.x-b.r*.3,b.y-b.r*.3,0,b.x,b.y,b.r);
+      sg.addColorStop(0,`hsla(${b.hue},75%,94%,.75)`);
+      sg.addColorStop(.65,`hsla(${b.hue},55%,68%,.2)`);
+      sg.addColorStop(1,`hsla(${b.hue},45%,50%,.45)`);
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+      ctx.fillStyle=sg; ctx.fill();
+      ctx.strokeStyle=`hsla(${b.hue},65%,75%,.55)`; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.globalAlpha=.55; ctx.beginPath(); ctx.arc(b.x-b.r*.3,b.y-b.r*.3,b.r*.22,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,.65)'; ctx.fill();
+      ctx.restore();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 5 — Shooting Stars / Night Sky (DARK)
+══════════════════════════════════════════════ */
+function bgShootingStars(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#000820'; ctx.fillRect(0,0,W,H);
+  const stars=Array.from({length:220},()=>({x:Math.random()*W,y:Math.random()*H,r:.2+Math.random()*1.1,a:.25+Math.random()*.75}));
+  const shoots=[]; let nxt=0;
+  function mkS(){ const ang=-Math.PI*.25+(Math.random()-.5)*.5, spd=9+Math.random()*14; return {x:Math.random()*W,y:Math.random()*(H*.5),vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,trail:[],mxTr:18+~~(Math.random()*28)}; }
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='rgba(0,8,32,.28)'; ctx.fillRect(0,0,W,H);
+    stars.forEach(s=>{ ctx.globalAlpha=s.a; ctx.fillStyle='#cce8ff'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill(); });
+    ctx.globalAlpha=1;
+    if(--nxt<=0){ shoots.push(mkS()); nxt=55+~~(Math.random()*110); }
+    for(let i=shoots.length-1;i>=0;i--){
+      const s=shoots[i];
+      s.trail.push({x:s.x,y:s.y}); if(s.trail.length>s.mxTr) s.trail.shift();
+      s.x+=s.vx; s.y+=s.vy;
+      for(let j=1;j<s.trail.length;j++){
+        const a=j/s.trail.length;
+        ctx.globalAlpha=a*.85; ctx.lineWidth=a*2.2;
+        ctx.shadowBlur=a*10; ctx.shadowColor='rgba(200,225,255,1)';
+        ctx.strokeStyle='rgba(210,230,255,1)';
+        ctx.beginPath(); ctx.moveTo(s.trail[j-1].x,s.trail[j-1].y); ctx.lineTo(s.trail[j].x,s.trail[j].y); ctx.stroke();
+      }
+      if(s.x>W+60||s.y>H+60||s.x<-60) shoots.splice(i,1);
+    }
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#000820';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 6 — Honey / Milk Waves (LIGHT)
+══════════════════════════════════════════════ */
+function bgHoneyWaves(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  let t=0;
+  const waves=[
+    {amp:32,freq:.009,spd:.55,ph:0,col:'rgba(230,165,40,.22)',yPct:.33},
+    {amp:26,freq:.011,spd:.85,ph:1.1,col:'rgba(210,145,25,.18)',yPct:.5},
+    {amp:38,freq:.007,spd:.48,ph:2.2,col:'rgba(245,190,70,.18)',yPct:.65},
+    {amp:22,freq:.013,spd:1.05,ph:3.3,col:'rgba(175,115,18,.15)',yPct:.82},
+    {amp:18,freq:.016,spd:1.3,ph:.7,col:'rgba(255,215,100,.12)',yPct:.9},
+  ];
+  const stop=mkLoop(()=>{
+    t+=.012;
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#fffef5'); bg.addColorStop(.5,'#fffbea'); bg.addColorStop(1,'#fff3cc');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    waves.forEach(w=>{
+      ctx.beginPath();
+      const y0=H*w.yPct;
+      ctx.moveTo(0,H);
+      for(let x=0;x<=W;x+=3){
+        const y=y0+Math.sin(x*w.freq+t*w.spd+w.ph)*w.amp+Math.cos(x*w.freq*.6+t*w.spd*.75)*w.amp*.45;
+        if(x===0) ctx.moveTo(0,y); else ctx.lineTo(x,y);
+      }
+      ctx.lineTo(W,H); ctx.closePath();
+      ctx.fillStyle=w.col; ctx.fill();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 7 — Ocean at Night (DARK)
+══════════════════════════════════════════════ */
+function bgOceanNight(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const stars=Array.from({length:90},()=>({x:Math.random()*W,y:Math.random()*H*.42,r:.2+Math.random()*.9,a:.35+Math.random()*.55}));
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.013;
+    const sky=ctx.createLinearGradient(0,0,0,H*.52);
+    sky.addColorStop(0,'#000a18'); sky.addColorStop(1,'#001830');
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,H*.52);
+    stars.forEach(s=>{ ctx.globalAlpha=s.a*(.65+Math.sin(t*2.2+s.x)*.22); ctx.fillStyle='#bbccee'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill(); });
+    ctx.globalAlpha=1;
+    const mx=W*.73, my=H*.14;
+    const mg=ctx.createRadialGradient(mx,my,0,mx,my,44);
+    mg.addColorStop(0,'rgba(255,255,215,.9)'); mg.addColorStop(.5,'rgba(235,235,195,.35)'); mg.addColorStop(1,'transparent');
+    ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(mx,my,44,0,Math.PI*2); ctx.fill();
+    // moonlight shimmer
+    const ml=ctx.createLinearGradient(mx-28,H*.45,mx+28,H);
+    ml.addColorStop(0,'transparent'); ml.addColorStop(.25,'rgba(180,175,120,.14)'); ml.addColorStop(1,'transparent');
+    ctx.fillStyle=ml; ctx.fillRect(mx-55,H*.44,110,H*.56);
+    const wTop=H*.47;
+    const water=ctx.createLinearGradient(0,wTop,0,H);
+    water.addColorStop(0,'#001e3f'); water.addColorStop(1,'#000c1e');
+    ctx.fillStyle=water; ctx.fillRect(0,wTop,W,H-wTop);
+    for(let i=0;i<7;i++){
+      const wy=wTop+i*(H-wTop)/7, amp=2.5+i*1.8, freq=.011-.001*i;
+      ctx.beginPath();
+      for(let x=0;x<=W;x+=5){ const y=wy+Math.sin(x*freq+t-i*.6)*(amp+Math.cos(t*.55+i)*.4*amp); if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.strokeStyle=`rgba(90,150,195,${.14-i*.015})`; ctx.lineWidth=1.4; ctx.stroke();
+    }
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 8 — Pink Curtain in Blue Sky (LIGHT)
+══════════════════════════════════════════════ */
+function bgPinkCurtain(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  let t=0;
+  const nFolds=10;
+  const stop=mkLoop(()=>{
+    t+=.016;
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#5ab4e8'); sky.addColorStop(1,'#a8d8f0');
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+    // clouds
+    ctx.fillStyle='rgba(255,255,255,.52)';
+    [[.18,H*.1,90,28],[.52,H*.17,110,22],[.78,H*.08,75,20]].forEach(([cx,cy,rx,ry])=>{
+      ctx.beginPath(); ctx.ellipse(cx*W+Math.sin(t*.18)*18,cy,rx,ry,0,0,Math.PI*2); ctx.fill();
+    });
+    const fW=W/nFolds;
+    for(let i=0;i<nFolds;i++){
+      const cx=i*fW+fW/2;
+      const sw=22+Math.sin(t*.65+i*.55)*12;
+      const wv=.032+Math.sin(t*.38+i*.28)*.008;
+      ctx.beginPath(); ctx.moveTo(i*fW,0);
+      for(let y=0;y<=H;y+=5){
+        const x=cx+Math.sin(y*wv+t*.52+i)*(sw)+Math.cos(y*wv*.55+t*.32+i)*sw*.45;
+        ctx.lineTo(x,y);
+      }
+      ctx.lineTo((i+1)*fW,H); ctx.lineTo((i+1)*fW,0); ctx.closePath();
+      const lg=ctx.createLinearGradient(i*fW,0,(i+1)*fW,0);
+      const h=330+i%3*8;
+      lg.addColorStop(0,`hsla(${h},80%,82%,.82)`);
+      lg.addColorStop(.5,`hsla(${h+5},75%,92%,.6)`);
+      lg.addColorStop(1,`hsla(${h},78%,79%,.82)`);
+      ctx.fillStyle=lg; ctx.fill();
+    }
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 9 — Glowing Particles (DARK)
+══════════════════════════════════════════════ */
+function bgGlowingParticles(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#050a1a'; ctx.fillRect(0,0,W,H);
+  const N=75;
+  const ps=Array.from({length:N},()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.75,vy:(Math.random()-.5)*.75,r:2+Math.random()*3.8,hue:Math.random()*360,pls:Math.random()*Math.PI*2,plsSpd:.022+Math.random()*.038}));
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='rgba(5,10,26,.18)'; ctx.fillRect(0,0,W,H);
+    for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+      const dx=ps[i].x-ps[j].x, dy=ps[i].y-ps[j].y, d=Math.sqrt(dx*dx+dy*dy);
+      if(d<105){ ctx.globalAlpha=(1-d/105)*.18; ctx.strokeStyle=`hsl(${(ps[i].hue+ps[j].hue)*.5},80%,68%)`; ctx.lineWidth=.5; ctx.beginPath(); ctx.moveTo(ps[i].x,ps[i].y); ctx.lineTo(ps[j].x,ps[j].y); ctx.stroke(); }
+    }
+    ps.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.pls+=p.plsSpd;
+      if(p.x<0||p.x>W) p.vx*=-1; if(p.y<0||p.y>H) p.vy*=-1;
+      const gr=p.r*(1+Math.sin(p.pls)*.28);
+      ctx.globalAlpha=.68+Math.sin(p.pls)*.22;
+      ctx.shadowBlur=18; ctx.shadowColor=`hsl(${p.hue},100%,60%)`;
+      ctx.fillStyle=`hsl(${p.hue},100%,70%)`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,gr,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#050a1a';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 10 — Sprinkles (LIGHT)
+══════════════════════════════════════════════ */
+function bgSprinkles(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const COLS=['#ff6b9d','#ffd93d','#6bcb77','#4d96ff','#ff6b6b','#c77dff','#ff9f43','#00d2ff','#f96529'];
+  function mkS(){ return {x:Math.random()*W,y:Math.random()*H-H,vx:(Math.random()-.5)*.45,vy:.55+Math.random()*1.35,ang:Math.random()*Math.PI*2,angSpd:(Math.random()-.5)*.07,col:COLS[~~(Math.random()*COLS.length)],w:3+Math.random()*4,h:8+Math.random()*11}; }
+  const sps=Array.from({length:120},()=>{const s=mkS();s.y=Math.random()*H;return s;});
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='#fff9fc'; ctx.fillRect(0,0,W,H);
+    sps.forEach(s=>{
+      s.y+=s.vy; s.x+=s.vx; s.ang+=s.angSpd;
+      if(s.y>H+20){ Object.assign(s,mkS()); s.y=-20; s.x=Math.random()*W; }
+      ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.ang);
+      ctx.globalAlpha=.88; ctx.fillStyle=s.col;
+      ctx.beginPath(); ctx.moveTo(-s.w/2,-s.h/2+s.w/2); ctx.lineTo(s.w/2,-s.h/2+s.w/2);
+      ctx.arcTo(s.w/2,-s.h/2,0,-s.h/2,s.w/2); ctx.arcTo(-s.w/2,-s.h/2,0,-s.h/2,s.w/2);
+      ctx.lineTo(-s.w/2,s.h/2-s.w/2);
+      ctx.arcTo(-s.w/2,s.h/2,0,s.h/2,s.w/2); ctx.arcTo(s.w/2,s.h/2,0,s.h/2,s.w/2);
+      ctx.lineTo(s.w/2,-s.h/2+s.w/2); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    });
+    ctx.globalAlpha=1;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 11 — Music Beats (DARK)
+══════════════════════════════════════════════ */
+function bgMusicBeats(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#080010'; ctx.fillRect(0,0,W,H);
+  const nBars=48;
+  const bars=Array.from({length:nBars},(_,i)=>({h:0,target:0,freq:.04+Math.random()*.09,ph:Math.random()*Math.PI*2,hue:255+i*2.5}));
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.03;
+    ctx.fillStyle='rgba(8,0,16,.28)'; ctx.fillRect(0,0,W,H);
+    const bW=W/nBars;
+    bars.forEach((b,i)=>{
+      const beat=.28+Math.abs(Math.sin(t*b.freq*3.2+b.ph))*.38+Math.abs(Math.sin(t*b.freq*7.5+b.ph))*.16+Math.abs(Math.sin(t*b.freq*1.8+b.ph+1))*.1;
+      b.target=beat*H*.72; b.h+=(b.target-b.h)*.16;
+      const x=i*bW, bh=b.h;
+      const g=ctx.createLinearGradient(0,H/2-bh/2,0,H/2+bh/2);
+      g.addColorStop(0,`hsla(${b.hue+45},100%,72%,.85)`);
+      g.addColorStop(.4,`hsla(${b.hue},100%,58%,.92)`);
+      g.addColorStop(1,`hsla(${b.hue+45},100%,72%,.85)`);
+      ctx.shadowBlur=14; ctx.shadowColor=`hsl(${b.hue},100%,60%)`;
+      ctx.fillStyle=g; ctx.fillRect(x+1,H/2-bh/2,bW-2,bh);
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+    // center line glow
+    const cl=ctx.createLinearGradient(0,H/2-1,0,H/2+1);
+    cl.addColorStop(0,'rgba(200,150,255,.3)'); cl.addColorStop(1,'rgba(100,50,200,.3)');
+    ctx.fillStyle=cl; ctx.fillRect(0,H/2-1,W,2);
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#080010';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 12 — Falling Blossoms (LIGHT)
+══════════════════════════════════════════════ */
+function bgBlossoms(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  function mkP(){ return {x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.75,vy:.38+Math.random()*1.1,ang:Math.random()*Math.PI*2,angSpd:(Math.random()-.5)*.038,sc:.45+Math.random()*.85,hue:318+Math.random()*28,al:.5+Math.random()*.45}; }
+  const petals=Array.from({length:75},()=>{const p=mkP();p.y=Math.random()*H;return p;});
+  const stop=mkLoop(()=>{
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#fff5f8'); g.addColorStop(1,'#ffe8f2');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    const now=Date.now()*.001;
+    petals.forEach(p=>{
+      p.y+=p.vy; p.x+=p.vx+Math.sin(now*.95+p.y*.005)*.32; p.ang+=p.angSpd;
+      if(p.y>H+20) Object.assign(p,mkP(),{y:-20,x:Math.random()*W});
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.ang); ctx.scale(p.sc,p.sc);
+      ctx.globalAlpha=p.al;
+      ctx.fillStyle=`hsl(${p.hue},78%,86%)`;
+      ctx.beginPath(); ctx.ellipse(0,0,7,13,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=`hsla(${p.hue+8},65%,92%,.55)`;
+      ctx.beginPath(); ctx.ellipse(-1.5,-3,2.8,5.5,-.35,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+    ctx.globalAlpha=1;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 13 — Enchanted Forest (DARK)
+══════════════════════════════════════════════ */
+function bgEnchantedForest(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const flies=Array.from({length:58},()=>({x:Math.random()*W,y:H*.3+Math.random()*H*.62,vx:(Math.random()-.5)*.48,vy:(Math.random()-.5)*.3,pls:Math.random()*Math.PI*2,plsSpd:.038+Math.random()*.055,hue:65+Math.random()*40}));
+  let t=0;
+  function tree(x,h,w){
+    ctx.fillStyle='rgba(0,18,4,.98)';
+    ctx.fillRect(x-w*.07,H-h*.28,w*.14,h*.28);
+    for(const [oy,ow] of [[0,1],[.35,.82],[.65,.62]]){
+      ctx.beginPath(); ctx.moveTo(x,H-h*(1+oy*.15)); ctx.lineTo(x-w*ow*.5,H-h*(oy+.28)); ctx.lineTo(x+w*ow*.5,H-h*(oy+.28)); ctx.closePath(); ctx.fill();
+    }
+  }
+  const stop=mkLoop(()=>{
+    t+=.008;
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#010a02'); sky.addColorStop(1,'#021505');
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=.38; const mg=ctx.createRadialGradient(W*.2,H*.1,0,W*.2,H*.1,40);
+    mg.addColorStop(0,'rgba(240,248,210,.9)'); mg.addColorStop(.5,'rgba(200,220,170,.3)'); mg.addColorStop(1,'transparent');
+    ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(W*.2,H*.1,40,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+    for(let i=0;i<3;i++){
+      const fg=ctx.createRadialGradient(W/2+Math.sin(t+i)*120,H*.72+i*40,0,W/2+Math.sin(t+i)*120,H*.72+i*40,W*.38);
+      fg.addColorStop(0,`rgba(15,65,15,${.055-i*.012})`); fg.addColorStop(1,'transparent');
+      ctx.fillStyle=fg; ctx.fillRect(0,0,W,H);
+    }
+    for(let i=0;i<9;i++) tree(i*(W/8)-W*.04,H*(.42+Math.sin(i*.68)*.1),W*.14+Math.sin(i)*.04*W);
+    for(let i=0;i<6;i++) tree(i*(W/5)+W*.08,H*(.3+Math.cos(i*.88)*.07),W*.2);
+    flies.forEach(f=>{
+      f.x+=f.vx+Math.sin(t*2.1+f.y*.012)*.2; f.y+=f.vy+Math.cos(t*1.6+f.x*.012)*.15; f.pls+=f.plsSpd;
+      if(f.x<0) f.x=W; if(f.x>W) f.x=0; if(f.y<H*.18||f.y>H*.95) f.vy*=-1;
+      const a=.35+Math.sin(f.pls)*.38;
+      ctx.globalAlpha=a; ctx.shadowBlur=18; ctx.shadowColor=`hsl(${f.hue},100%,60%)`;
+      ctx.fillStyle=`hsl(${f.hue},100%,78%)`;
+      ctx.beginPath(); ctx.arc(f.x,f.y,1.8,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 14 — Beehive (LIGHT)
+══════════════════════════════════════════════ */
+function bgBeehive(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const R=30;
+  const bees=Array.from({length:9},()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.8,vy:(Math.random()-.5)*1.8,wingA:0,wSpd:.18+Math.random()*.12}));
+  let t=0;
+  function hex(cx,cy,r){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3; i===0?ctx.moveTo(cx+r*Math.cos(a),cy+r*Math.sin(a)):ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a)); } ctx.closePath(); }
+  const stop=mkLoop(()=>{
+    t+=.014;
+    ctx.fillStyle='#fff9d0'; ctx.fillRect(0,0,W,H);
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#fff8c0'); bg.addColorStop(1,'#ffe090');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    const hH=R*Math.sqrt(3), cW=R*1.5;
+    const cols=Math.ceil(W/cW)+3, rows=Math.ceil(H/hH)+3;
+    for(let col=-1;col<cols;col++) for(let row=-1;row<rows;row++){
+      const cx=col*cW+R, cy=row*hH+(col%2)*hH*.5+R;
+      const hue=40+Math.sin(cx*.01+t*.28)*5+Math.cos(cy*.009+t*.2)*5;
+      const pls=.82+Math.sin(cx*.014+cy*.011+t*.45)*.14;
+      hex(cx,cy,R-2);
+      const g=ctx.createRadialGradient(cx-R*.22,cy-R*.22,0,cx,cy,R);
+      g.addColorStop(0,`hsla(${hue},88%,${62*pls}%,.92)`);
+      g.addColorStop(1,`hsla(${hue-4},75%,${44*pls}%,.8)`);
+      ctx.fillStyle=g; ctx.fill();
+      ctx.strokeStyle=`hsla(${hue-12},68%,28%,.42)`; ctx.lineWidth=1.4; ctx.stroke();
+    }
+    bees.forEach(b=>{
+      b.x+=b.vx+Math.sin(t+b.y*.01)*.6; b.y+=b.vy+Math.cos(t+b.x*.01)*.6; b.wingA+=b.wSpd;
+      if(b.x<-20||b.x>W+20) b.vx*=-1; if(b.y<-20||b.y>H+20) b.vy*=-1;
+      ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(Math.atan2(b.vy,b.vx));
+      const wa=Math.sin(b.wingA)*.6;
+      ctx.fillStyle='rgba(200,235,255,.65)'; ctx.strokeStyle='rgba(100,180,220,.4)'; ctx.lineWidth=.8;
+      ctx.beginPath(); ctx.ellipse(-2,-10+Math.sin(wa)*3,8,5,wa,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-2,10+Math.sin(wa)*3,8,5,-wa,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#f5d020';
+      ctx.beginPath(); ctx.ellipse(0,0,9,6.5,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#3a2000'; ctx.lineWidth=1.2; ctx.stroke();
+      for(let s=-1;s<=1;s++){ ctx.beginPath(); ctx.moveTo(s*3.5,-7); ctx.lineTo(s*3.5,7); ctx.stroke(); }
+      ctx.fillStyle='#3a2000'; ctx.beginPath(); ctx.arc(8,0,2.5,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 15 — Thunderstorm (DARK)
+══════════════════════════════════════════════ */
+function bgThunderstorm(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#07070f'; ctx.fillRect(0,0,W,H);
+  const rain=Array.from({length:220},()=>({x:Math.random()*W,y:Math.random()*H,len:10+Math.random()*22,spd:9+Math.random()*8,al:.18+Math.random()*.38}));
+  let ltTimer=60, ltFlash=0, bolts=[];
+  function mkBolt(x,y,dir,depth){
+    if(depth>6||y>H) return;
+    const len=28+Math.random()*58, ang=dir+(Math.random()-.5)*.75;
+    const ex=x+Math.cos(ang)*len, ey=y+Math.sin(ang)*len;
+    bolts.push({x1:x,y1:y,x2:ex,y2:ey,al:1});
+    if(Math.random()<.55) mkBolt(ex,ey,ang+.38,depth+1);
+    if(Math.random()<.28) mkBolt(ex,ey,ang-.38,depth+1);
+  }
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.02; ltTimer--;
+    ctx.fillStyle='rgba(7,7,15,.28)'; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=.58;
+    for(let i=0;i<6;i++){
+      const cx=((i/6+t*.018)%1.3-.15)*W, cy=H*(.08+Math.sin(i*1.2)*.05);
+      const cr=ctx.createRadialGradient(cx,cy,0,cx,cy,W*.22);
+      cr.addColorStop(0,'rgba(25,25,48,.82)'); cr.addColorStop(1,'transparent');
+      ctx.fillStyle=cr; ctx.beginPath(); ctx.ellipse(cx,cy,W*.24,H*.13,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    ctx.strokeStyle='rgba(130,170,215,.38)'; ctx.lineWidth=.9;
+    rain.forEach(r=>{
+      r.y+=r.spd; r.x-=r.spd*.32;
+      if(r.y>H+r.len){r.y=-r.len;r.x=Math.random()*(W+H*.5);}
+      ctx.globalAlpha=r.al; ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x-r.len*.32,r.y+r.len); ctx.stroke();
+    });
+    ctx.globalAlpha=1;
+    if(ltFlash>0){ ctx.fillStyle=`rgba(190,215,255,${ltFlash*.14})`; ctx.fillRect(0,0,W,H); ltFlash*=.78; }
+    bolts=bolts.filter(b=>b.al>.04);
+    bolts.forEach(b=>{ b.al*=.82; ctx.globalAlpha=b.al; ctx.shadowBlur=18; ctx.shadowColor='rgba(180,205,255,1)'; ctx.strokeStyle='rgba(225,235,255,1)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(b.x1,b.y1); ctx.lineTo(b.x2,b.y2); ctx.stroke(); });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+    if(ltTimer<=0){ ltTimer=75+~~(Math.random()*115); ltFlash=1; bolts=[]; mkBolt(W*(.18+Math.random()*.64),0,Math.PI/2,0); }
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#07070f';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 16 — Light Sparkles (LIGHT)
+══════════════════════════════════════════════ */
+function bgLightSparkles(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const sps=Array.from({length:85},()=>({x:Math.random()*W,y:Math.random()*H,life:Math.random()*Math.PI*2,lifeSpd:.018+Math.random()*.038,sz:6+Math.random()*22,hue:38+Math.random()*55}));
+  function drawStar(x,y,sz,al,hue){
+    ctx.save(); ctx.translate(x,y); ctx.globalAlpha=al;
+    ctx.fillStyle=`hsl(${hue},75%,68%)`; ctx.shadowBlur=sz*.9; ctx.shadowColor=`hsl(${hue},90%,82%)`;
+    for(let arm=0;arm<4;arm++){
+      ctx.rotate(Math.PI/4); ctx.beginPath();
+      ctx.moveTo(0,-sz); ctx.quadraticCurveTo(sz*.18,0,0,sz*.32); ctx.quadraticCurveTo(-sz*.18,0,0,-sz); ctx.fill();
+    }
+    ctx.restore();
+  }
+  const stop=mkLoop(()=>{
+    const bg=ctx.createLinearGradient(0,0,W,H);
+    bg.addColorStop(0,'#fffff5'); bg.addColorStop(.45,'#fffef0'); bg.addColorStop(1,'#fff9e5');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    sps.forEach(s=>{
+      s.life+=s.lifeSpd;
+      if(s.life>Math.PI){s.life=0;s.x=Math.random()*W;s.y=Math.random()*H;s.hue=38+Math.random()*55;}
+      const a=Math.max(0,Math.sin(s.life));
+      drawStar(s.x,s.y,s.sz,a*.72,s.hue);
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 17 — Rainfall (DARK)
+══════════════════════════════════════════════ */
+function bgRainfall(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#040e18'; ctx.fillRect(0,0,W,H);
+  const rain=Array.from({length:260},()=>({x:Math.random()*W,y:Math.random()*H,len:14+Math.random()*24,spd:7+Math.random()*9,al:.14+Math.random()*.3}));
+  let ripples=[];
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='rgba(4,14,24,.24)'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(90,140,195,.42)'; ctx.lineWidth=.85;
+    rain.forEach(r=>{
+      r.y+=r.spd; r.x-=r.spd*.38;
+      if(r.y>H+r.len){
+        r.y=-r.len; r.x=Math.random()*(W+H*.45);
+        if(Math.random()<.04) ripples.push({x:r.x+r.len*.38,y:H-5,r:0,mxR:28+Math.random()*36,al:.28});
+      }
+      ctx.globalAlpha=r.al; ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x-r.len*.38,r.y+r.len); ctx.stroke();
+    });
+    ripples=ripples.filter(r=>r.al>.012);
+    ripples.forEach(r=>{ r.r+=.55; r.al*=.92; ctx.globalAlpha=r.al; ctx.strokeStyle='rgba(95,150,210,.9)'; ctx.lineWidth=.8; ctx.beginPath(); ctx.ellipse(r.x,r.y,r.r,r.r*.28,0,0,Math.PI*2); ctx.stroke(); });
+    ctx.globalAlpha=1;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#040e18';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 18 — Moving Atoms (LIGHT)
+══════════════════════════════════════════════ */
+function bgAtoms(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const atoms=Array.from({length:14},()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.28,vy:(Math.random()-.5)*.28,r:22+Math.random()*34,tilts:[0,.85,1.7,2.55].map(a=>a+Math.random()*.4),eSpds:Array.from({length:4},()=>.01+Math.random()*.022),eAngs:[0,.8,1.6,2.4],hue:185+Math.random()*155}));
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.01;
+    const bg=ctx.createLinearGradient(0,0,W,H);
+    bg.addColorStop(0,'#f2f6ff'); bg.addColorStop(1,'#edf3ff');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    atoms.forEach(a=>{
+      a.x+=a.vx+Math.sin(t+a.y*.012)*.08; a.y+=a.vy+Math.cos(t+a.x*.012)*.08;
+      if(a.x<-60) a.x=W+60; if(a.x>W+60) a.x=-60; if(a.y<-60) a.y=H+60; if(a.y>H+60) a.y=-60;
+      ctx.save(); ctx.translate(a.x,a.y);
+      ctx.shadowBlur=7; ctx.shadowColor=`hsl(${a.hue},75%,55%)`;
+      ctx.fillStyle=`hsl(${a.hue},78%,60%)`; ctx.globalAlpha=.55;
+      ctx.beginPath(); ctx.arc(0,0,5.5,0,Math.PI*2); ctx.fill();
+      a.eAngs.forEach((ea,i)=>{
+        a.eAngs[i]+=a.eSpds[i];
+        const tlt=a.tilts[i];
+        ctx.globalAlpha=.18; ctx.strokeStyle=`hsl(${a.hue},65%,55%)`; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.ellipse(0,0,a.r,a.r*.32,tlt,0,Math.PI*2); ctx.stroke();
+        const ex=Math.cos(a.eAngs[i])*a.r, ey=Math.sin(a.eAngs[i])*a.r*.32;
+        const rx=ex*Math.cos(tlt)-ey*Math.sin(tlt), ry=ex*Math.sin(tlt)+ey*Math.cos(tlt);
+        ctx.globalAlpha=.82; ctx.fillStyle=`hsl(${a.hue+22},92%,52%)`;
+        ctx.shadowBlur=9; ctx.shadowColor=`hsl(${a.hue},100%,60%)`;
+        ctx.beginPath(); ctx.arc(rx,ry,2.8,0,Math.PI*2); ctx.fill();
+      });
+      ctx.restore();
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 19 — Aurora Borealis (DARK)
+══════════════════════════════════════════════ */
+function bgAurora(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const stars=Array.from({length:160},()=>({x:Math.random()*W,y:Math.random()*H*.62,r:.2+Math.random()*.95,a:.28+Math.random()*.62}));
+  const bands=[
+    {c1:'rgba(0,255,140,.09)',c2:'rgba(0,180,100,.0)',ph:0,spd:.28,yB:.22},
+    {c1:'rgba(80,255,190,.1)',c2:'rgba(0,195,145,.0)',ph:1.1,spd:.18,yB:.32},
+    {c1:'rgba(140,90,255,.08)',c2:'rgba(90,42,200,.0)',ph:2.2,spd:.14,yB:.18},
+    {c1:'rgba(0,195,255,.07)',c2:'rgba(0,140,195,.0)',ph:3.3,spd:.22,yB:.38},
+    {c1:'rgba(80,255,160,.06)',c2:'rgba(0,155,100,.0)',ph:.7,spd:.32,yB:.28},
+  ];
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.007;
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#010a08'); sky.addColorStop(.65,'#020d0a'); sky.addColorStop(1,'#030f0c');
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+    stars.forEach(s=>{ ctx.globalAlpha=s.a*(.55+Math.sin(t*2.8+s.x)*.3); ctx.fillStyle='#9effc6'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill(); });
+    ctx.globalAlpha=1;
+    bands.forEach(b=>{
+      for(let x=0;x<=W;x+=5){
+        const by=H*(b.yB+Math.sin(x*.0048+t*b.spd+b.ph)*.082+Math.cos(x*.0028+t*b.spd*.72)*.048);
+        const ht=H*(.14+Math.sin(x*.0038+t*b.spd+b.ph+.55)*.058);
+        const g=ctx.createLinearGradient(x,by-ht,x,by+ht*2.2);
+        g.addColorStop(0,'transparent'); g.addColorStop(.28,b.c1); g.addColorStop(.72,b.c2); g.addColorStop(1,'transparent');
+        ctx.fillStyle=g; ctx.fillRect(x,by-ht,5,ht*3.2);
+      }
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#010a08';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 20 — Crimson Deep Blue (DARK)
+══════════════════════════════════════════════ */
+function bgCrimsonBlue(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#060010'; ctx.fillRect(0,0,W,H);
+  const swirls=Array.from({length:8},(_,i)=>({ph:i*Math.PI/4,spd:.0028+Math.random()*.003,r:90+Math.random()*180,hue:i%2===0?352:232,xAmp:.38,yAmp:.24}));
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.007;
+    ctx.fillStyle='rgba(6,0,16,.14)'; ctx.fillRect(0,0,W,H);
+    swirls.forEach(s=>{
+      const cx=W/2+Math.cos(t*s.spd+s.ph)*W*s.xAmp, cy=H/2+Math.sin(t*s.spd*1.28+s.ph)*H*s.yAmp;
+      const g=ctx.createRadialGradient(cx,cy,0,cx,cy,s.r);
+      g.addColorStop(0,`hsla(${s.hue},88%,42%,.24)`);
+      g.addColorStop(.5,`hsla(${s.hue+18},75%,28%,.11)`);
+      g.addColorStop(1,'transparent');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,s.r,0,Math.PI*2); ctx.fill();
+    });
+    for(let i=0;i<4;i++){
+      const sl=ctx.createLinearGradient(0,H/2,W,H/2);
+      sl.addColorStop(0,'transparent');
+      sl.addColorStop(.3+Math.sin(t*.48+i)*.18,`hsla(${i%2===0?355:240},88%,38%,.07)`);
+      sl.addColorStop(1,'transparent');
+      ctx.fillStyle=sl;
+      ctx.save(); ctx.translate(0,Math.sin(t*.3+i*1.2)*H*.09); ctx.fillRect(0,0,W,H); ctx.restore();
+    }
+    // nebula-like center
+    const ng=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.min(W,H)*.28);
+    ng.addColorStop(0,`hsla(${280+Math.sin(t*.2)*40},80%,30%,.08)`); ng.addColorStop(1,'transparent');
+    ctx.fillStyle=ng; ctx.fillRect(0,0,W,H);
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#060010';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Ch 21 — Fireworks (DARK)
+══════════════════════════════════════════════ */
+function bgFireworks(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  ctx.fillStyle='#000008'; ctx.fillRect(0,0,W,H);
+  const rockets=[], bursts=[];
+  let nxtR=35;
+  function mkR(){ return {x:W*(.18+Math.random()*.64),y:H,vy:-(8.5+Math.random()*6),vx:(Math.random()-.5)*1.8,trail:[],hue:Math.random()*360}; }
+  function doBurst(x,y,hue){
+    for(let i=0;i<88;i++){
+      const a=Math.random()*Math.PI*2, spd=.8+Math.random()*6.5;
+      bursts.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,life:1,dec:.014+Math.random()*.022,hue:hue+(Math.random()-.5)*38,sz:1.4+Math.random()*2.6});
+    }
+  }
+  const stop=mkLoop(()=>{
+    ctx.fillStyle='rgba(0,0,8,.24)'; ctx.fillRect(0,0,W,H);
+    if(--nxtR<=0){ rockets.push(mkR()); nxtR=38+~~(Math.random()*72); }
+    for(let i=rockets.length-1;i>=0;i--){
+      const r=rockets[i];
+      r.trail.push({x:r.x,y:r.y}); if(r.trail.length>16) r.trail.shift();
+      r.x+=r.vx; r.y+=r.vy; r.vy+=.16;
+      r.trail.forEach((pt,j)=>{ ctx.globalAlpha=(j/r.trail.length)*.72; ctx.fillStyle=`hsl(${r.hue},100%,72%)`; ctx.shadowBlur=5; ctx.shadowColor=`hsl(${r.hue},100%,60%)`; ctx.beginPath(); ctx.arc(pt.x,pt.y,1.6,0,Math.PI*2); ctx.fill(); });
+      if(r.vy>0){ doBurst(r.x,r.y,r.hue); rockets.splice(i,1); }
+    }
+    for(let i=bursts.length-1;i>=0;i--){
+      const b=bursts[i];
+      b.x+=b.vx; b.y+=b.vy; b.vy+=.055; b.vx*=.975; b.life-=b.dec;
+      if(b.life<=0){bursts.splice(i,1);continue;}
+      ctx.globalAlpha=b.life; ctx.shadowBlur=7; ctx.shadowColor=`hsl(${b.hue},100%,60%)`; ctx.fillStyle=`hsl(${b.hue},100%,70%)`;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.sz,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;ctx.fillStyle='#000008';ctx.fillRect(0,0,W,H);});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Background Manager
+══════════════════════════════════════════════ */
+
+/* ── Falling Keys (Keywords Quiz mode) ── */
+function bgFallingKeys(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+
+  // Key shapes to draw — each key has a label and a size tier
+  const KEY_LABELS = [
+    'A','B','C','D','E','F','G','H','I','J','K','L','M',
+    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+    '↵','⌫','⇧','⌘','⌥','⇥','⎵','←','→','↑','↓',
+    'Ctrl','Alt','Del','Esc','Fn','End','PgUp',
+  ];
+
+  function mkKey(){
+    const label = KEY_LABELS[Math.floor(Math.random()*KEY_LABELS.length)];
+    const wide  = label.length > 1;
+    const w     = wide ? 54+Math.random()*18 : 36+Math.random()*12;
+    const h     = 34+Math.random()*10;
+    return {
+      x: Math.random()*W,
+      y: -h - Math.random()*H,
+      w, h,
+      label,
+      spd: .55+Math.random()*1.35,
+      rot: (Math.random()-.5)*.35,
+      rotSpd: (Math.random()-.5)*.008,
+      hue: 210+Math.random()*80,   // blue-purple family
+      depth: .35+Math.random()*.65, // simulates z-depth
+      al: .55+Math.random()*.4,
+    };
+  }
+
+  const keys = Array.from({length:48}, ()=>{
+    const k = mkKey(); k.y = Math.random()*H; return k;
+  });
+
+  function drawKey(k){
+    ctx.save();
+    ctx.translate(k.x, k.y);
+    ctx.rotate(k.rot);
+    ctx.globalAlpha = k.al * k.depth;
+
+    const r = 6; // corner radius
+    const w = k.w, h = k.h;
+    const x = -w/2, y = -h/2;
+
+    // ── outer shell (raised key look) ──
+    ctx.beginPath();
+    ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y);
+    ctx.arcTo(x+w, y, x+w, y+r, r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+    ctx.lineTo(x+r, y+h);
+    ctx.arcTo(x, y+h, x, y+h-r, r);
+    ctx.lineTo(x, y+r);
+    ctx.arcTo(x, y, x+r, y, r);
+    ctx.closePath();
+
+    // dark tinted fill
+    ctx.fillStyle = `hsla(${k.hue},32%,${10+k.depth*8}%,.92)`;
+    ctx.fill();
+
+    // top-face highlight (slightly inset, lighter)
+    const inset = 3;
+    ctx.beginPath();
+    const ir = Math.max(2, r-2);
+    ctx.moveTo(x+inset+ir, y+inset);
+    ctx.lineTo(x+w-inset-ir, y+inset);
+    ctx.arcTo(x+w-inset, y+inset, x+w-inset, y+inset+ir, ir);
+    ctx.lineTo(x+w-inset, y+h-inset-ir-3);
+    ctx.arcTo(x+w-inset, y+h-inset-3, x+w-inset-ir, y+h-inset-3, ir);
+    ctx.lineTo(x+inset+ir, y+h-inset-3);
+    ctx.arcTo(x+inset, y+h-inset-3, x+inset, y+h-inset-3-ir, ir);
+    ctx.lineTo(x+inset, y+inset+ir);
+    ctx.arcTo(x+inset, y+inset, x+inset+ir, y+inset, ir);
+    ctx.closePath();
+    ctx.fillStyle = `hsla(${k.hue},40%,${18+k.depth*14}%,.95)`;
+    ctx.fill();
+
+    // rim glow
+    ctx.shadowBlur = 10*k.depth;
+    ctx.shadowColor = `hsla(${k.hue},75%,60%,.55)`;
+    ctx.strokeStyle = `hsla(${k.hue},55%,${35+k.depth*20}%,.7)`;
+    ctx.lineWidth = .9;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // label
+    const fontSize = k.w > 44 ? 11 : 13;
+    ctx.font = `${fontSize}px 'Cinzel', serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `hsla(${k.hue},65%,${68+k.depth*18}%,${.75+k.depth*.2})`;
+    ctx.shadowBlur = 6*k.depth;
+    ctx.shadowColor = `hsla(${k.hue},80%,65%,.5)`;
+    ctx.fillText(k.label, 0, -1);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  }
+
+  const stopLoop = mkLoop(()=>{
+    // dark background with subtle blue-purple tint
+    ctx.fillStyle = 'rgba(4,5,18,.28)';
+    ctx.fillRect(0,0,W,H);
+
+    // very subtle radial centre glow
+    const cg = ctx.createRadialGradient(W/2,H*.4,0,W/2,H*.4,Math.min(W,H)*.55);
+    cg.addColorStop(0,'rgba(80,70,180,.055)');
+    cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.fillRect(0,0,W,H);
+
+    keys.forEach(k=>{
+      k.y  += k.spd;
+      k.rot += k.rotSpd;
+      k.x  += Math.sin(k.y*.007+k.depth)*0.3;
+      if(k.y > H + k.h + 20) Object.assign(k, mkKey(), {x: Math.random()*W});
+      drawKey(k);
+    });
+    ctx.globalAlpha=1;
+  });
+
+  const rmR = makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stopLoop(); rmR(); };
+}
+
+const BG_FNS=[bgSparks,bgSnow,bgGalaxy,bgBubbles,bgShootingStars,bgHoneyWaves,bgOceanNight,bgPinkCurtain,bgGlowingParticles,bgSprinkles,bgMusicBeats,bgBlossoms,bgEnchantedForest,bgBeehive,bgThunderstorm,bgLightSparkles,bgRainfall,bgAtoms,bgAurora,bgCrimsonBlue,bgFireworks];
+
+/* ── Black pulsing ripples — base layer for More Tools page ── */
+function bgBlackRipples(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  const ripples = Array.from({length:5},(_,i)=>({ phase: i/5 }));
+  let t=0;
+  const stop=mkLoop(()=>{
+    t+=.004;
+    ctx.fillStyle='#000000'; ctx.fillRect(0,0,W,H);
+    ripples.forEach(r=>{
+      const prog = (t*.12 + r.phase) % 1;
+      const radius = prog * Math.max(W,H) * .85;
+      const alpha = (1-prog) * .09;
+      ctx.strokeStyle=`rgba(30,30,30,${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(W/2,H/2,radius,0,Math.PI*2); ctx.stroke();
+    });
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Situation Quotations — Lime Rice Rain (LIGHT-ish)
+══════════════════════════════════════════════ */
+function bgLimeRiceRain(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+  function mkRice(){
+    const len=14+Math.random()*24;
+    return {
+      x: Math.random()*W,
+      y: -len - Math.random()*H,
+      len,
+      w: 3+Math.random()*3.5,
+      spd: 1.4+Math.random()*2.8,
+      rot: (Math.random()-.5)*.55,
+      rotSpd: (Math.random()-.5)*.012,
+      hue: 52+Math.random()*18,  // yellow-gold
+      al: .55+Math.random()*.42,
+    };
+  }
+  const grains = Array.from({length:120},()=>{
+    const g=mkRice(); g.y=Math.random()*H; return g;
+  });
+  const stop=mkLoop(()=>{
+    // Lime green background
+    const lg=ctx.createLinearGradient(0,0,0,H);
+    lg.addColorStop(0,'#6abf30');
+    lg.addColorStop(1,'#7dd640');
+    ctx.fillStyle=lg; ctx.fillRect(0,0,W,H);
+
+    grains.forEach(g=>{
+      g.y += g.spd;
+      g.rot += g.rotSpd;
+      if(g.y > H+g.len+20){ Object.assign(g, mkRice()); g.x=Math.random()*W; }
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.rotate(g.rot);
+      ctx.globalAlpha = g.al;
+      // Draw elongated oval (rice grain shape)
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = `hsla(${g.hue},100%,70%,.6)`;
+      ctx.fillStyle = `hsl(${g.hue},100%,72%)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, g.w*.5, g.len*.5, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  });
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+/* ══════════════════════════════════════════════
+   Answer Judge — Crimson Royal Swirl (DARK)
+══════════════════════════════════════════════ */
+function bgCrimsonSwirl(c){
+  let W,H; const ctx=initCanvas(c); W=c.width; H=c.height;
+
+  // Swirling vortex arms
+  const N_ARMS = 6;
+  const N_PER_ARM = 90;
+  const particles = [];
+  for(let arm=0; arm<N_ARMS; arm++){
+    for(let i=0; i<N_PER_ARM; i++){
+      const frac = i / N_PER_ARM;
+      const baseAngle = (arm / N_ARMS) * Math.PI * 2;
+      particles.push({
+        arm,
+        r: frac * Math.min(W,H) * 0.52,
+        angle: baseAngle + frac * Math.PI * 3.8 + (Math.random()-.5)*.55,
+        angSpd: (0.0015 + Math.random()*.0018) * (arm%2===0?1:-0.6),
+        rSpd: (Math.random()-.5)*.18,
+        rMin: frac * Math.min(W,H) * 0.04,
+        rMax: Math.min(W,H) * (0.08 + frac*.52),
+        hue: 340 + Math.floor(Math.random()*30) - 15,   // 325–355: deep crimson→blood red
+        sat: 75 + Math.random()*25,
+        lit: 28 + Math.random()*30,
+        al:  0.45 + Math.random()*.5,
+        sz:  1.2 + Math.random()*3.2,
+        pulse: Math.random()*Math.PI*2,
+        pSpd: .008 + Math.random()*.012,
+      });
+    }
+  }
+
+  // Bright roving highlight blobs
+  const blobs = Array.from({length:5},(_,i)=>({
+    angle: (i/5)*Math.PI*2,
+    r: Math.min(W,H)*(0.12+Math.random()*.22),
+    angSpd: .0008 + Math.random()*.0012,
+    hue: 350 + Math.floor(Math.random()*20),
+    al: .12 + Math.random()*.14,
+    sz: Math.min(W,H)*(0.12+Math.random()*.1),
+  }));
+
+  // Floating mist droplets
+  const drops = Array.from({length:55},()=>({
+    x: Math.random()*W, y: Math.random()*H,
+    vx:(Math.random()-.5)*.4, vy:(Math.random()-.5)*.4,
+    r: 1+Math.random()*2.2,
+    hue: 0+Math.floor(Math.random()*30),
+    al: .3+Math.random()*.5,
+    pulse: Math.random()*Math.PI*2,
+    pSpd: .01+Math.random()*.015,
+  }));
+
+  const stop = mkLoop(()=>{
+    // Deep blood base
+    ctx.fillStyle='rgba(10,0,2,.28)';
+    ctx.fillRect(0,0,W,H);
+
+    const cx=W/2, cy=H/2;
+
+    // Blob glows
+    blobs.forEach(b=>{
+      b.angle += b.angSpd;
+      const bx = cx + Math.cos(b.angle)*b.r;
+      const by = cy + Math.sin(b.angle)*b.r;
+      const g = ctx.createRadialGradient(bx,by,0,bx,by,b.sz);
+      g.addColorStop(0,`hsla(${b.hue},100%,48%,${b.al})`);
+      g.addColorStop(1,`hsla(${b.hue},80%,20%,0)`);
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(bx,by,b.sz,0,Math.PI*2); ctx.fill();
+    });
+
+    // Swirl particles
+    particles.forEach(p=>{
+      p.angle += p.angSpd;
+      p.r += p.rSpd;
+      p.pulse += p.pSpd;
+      if(p.r > p.rMax) p.rSpd = -Math.abs(p.rSpd)*.7;
+      if(p.r < p.rMin) p.rSpd =  Math.abs(p.rSpd)*.7;
+      const px = cx + Math.cos(p.angle)*p.r;
+      const py = cy + Math.sin(p.angle)*p.r;
+      const al = p.al * (.65 + .35*Math.sin(p.pulse));
+      ctx.save();
+      ctx.globalAlpha = al;
+      ctx.shadowBlur = 10 + 6*Math.sin(p.pulse);
+      ctx.shadowColor = `hsl(${p.hue},100%,50%)`;
+      ctx.fillStyle   = `hsl(${p.hue},${p.sat}%,${p.lit}%)`;
+      ctx.beginPath(); ctx.arc(px,py,p.sz*(0.8+0.4*Math.sin(p.pulse)),0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Mist drops
+    drops.forEach(d=>{
+      d.x+=d.vx; d.y+=d.vy; d.pulse+=d.pSpd;
+      if(d.x<-5) d.x=W+5; if(d.x>W+5) d.x=-5;
+      if(d.y<-5) d.y=H+5; if(d.y>H+5) d.y=-5;
+      ctx.save();
+      ctx.globalAlpha = d.al*(.6+.4*Math.sin(d.pulse));
+      ctx.shadowBlur=8; ctx.shadowColor=`hsl(${d.hue},100%,55%)`;
+      ctx.fillStyle=`hsl(${d.hue},90%,45%)`;
+      ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // Central glow
+    const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.min(W,H)*.38);
+    cg.addColorStop(0,'rgba(180,0,20,.18)');
+    cg.addColorStop(.5,'rgba(120,0,10,.08)');
+    cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.fillRect(0,0,W,H);
+  });
+
+  const rmR=makeResizer(c,()=>{W=c.width;H=c.height;});
+  return ()=>{ stop(); rmR(); };
+}
+
+const BgMgr = {
+  cas: null, stops: [null,null], front: 0, current: -1,
+  keyMode: false, savedCh: 1, situationMode: false, savedChSit: 1,
+  answerJudgeMode: false, savedChAJ: 1,
+
+  init(){
+    this.cas = [document.getElementById('bg-a'), document.getElementById('bg-b')];
+    this.cas[1].style.opacity = '0';
+    this.setChapter(1);
+  },
+
+  _crossfade(drawFn, bgColor, isLight){
+    const back=1-this.front, cBack=this.cas[back], cFront=this.cas[this.front];
+    if(this.stops[back]){ this.stops[back](); this.stops[back]=null; }
+    cBack.width=window.innerWidth; cBack.height=window.innerHeight;
+    this.stops[back]=drawFn(cBack);
+    cBack.style.opacity='0';
+    const prevFront=this.front;
+    setTimeout(()=>{
+      cBack.style.opacity='1'; cFront.style.opacity='0';
+      setTimeout(()=>{
+        if(this.stops[prevFront]){ this.stops[prevFront](); this.stops[prevFront]=null; }
+        this.front=back;
+      },1350);
+    },80);
+    if(isLight){ document.documentElement.classList.add('theme-light'); }
+    else       { document.documentElement.classList.remove('theme-light'); }
+    document.body.style.backgroundColor = bgColor;
+  },
+
+  setKeyMode(on){
+    if(on === this.keyMode) return;
+    this.keyMode = on;
+    if(on){
+      this.savedCh = this.current;
+      this.current = -1;
+      this._crossfade(bgFallingKeys, '#040512', false);
+    } else {
+      const ch = this.savedCh || 1;
+      this.current = -1;
+      this.setChapter(ch);
+    }
+  },
+
+  setToolsMode(on){
+    if(on === this.toolsMode) return;
+    this.toolsMode = on;
+    if(on){
+      this.savedChTools = this.current;
+      this.current = -1;
+      // Fade bg-layer to pure black — tools page draws its own canvas on top
+      this._crossfade(bgBlackRipples, '#000000', false);
+    } else {
+      const ch = this.savedChTools || 1;
+      this.current = -1;
+      this.setChapter(ch);
+    }
+  },
+
+  setSituationMode(on){
+    if(on === this.situationMode) return;
+    this.situationMode = on;
+    if(on){
+      this.savedChSit = this.current;
+      this.current = -1;
+      this._crossfade(bgLimeRiceRain, '#6abf30', true);
+    } else {
+      const ch = this.savedChSit || 1;
+      this.current = -1;
+      this.setChapter(ch);
+    }
+  },
+
+  setAnswerJudgeMode(on){
+    if(on === this.answerJudgeMode) return;
+    this.answerJudgeMode = on;
+    if(on){
+      this.savedChAJ = this.current;
+      this.current = -1;
+      this._crossfade(bgCrimsonSwirl, '#0a0002', false);
+    } else {
+      const ch = this.savedChAJ || 1;
+      this.current = -1;
+      this.setChapter(ch);
+    }
+  },
+
+  setChapter(ch){
+    if(this.keyMode) return;
+    if(this.toolsMode) return;
+    if(this.situationMode) return;
+    if(this.answerJudgeMode) return;
+    if(ch<1||ch>21) return;
+    if(ch===this.current) return;
+    this.current=ch;
+    this._crossfade(BG_FNS[ch-1], BG_BASE_COLORS[ch]||'#000', LIGHT_CHAPTERS.has(ch));
+  }
+};
+
+window.BgMgr=BgMgr;
+})();
+</script></head>
+<body id="artifacts-component-root-html" style="background-color: rgb(0, 0, 0);">
+<div id="wardify-picker" style="display: none;">
   <canvas id="picker-canvas"></canvas>
   <div class="wfy-content">
     <div class="wfy-wordmark">WARDIFY</div>
     <div class="wfy-tagline">Choose your material</div>
-    <div class="wfy-grid" id="wfy-grid"></div>
+    <div class="wfy-grid" id="wfy-grid"><div class="wfy-card" style="--glow: hsla(210,70%,60%,.14); --shadow: hsla(210,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(210,80%,72%)">✦</div><div class="wfy-title">John</div><div class="wfy-sub">21 chapters</div></div><div class="wfy-card" style="--glow: hsla(50,70%,60%,.14); --shadow: hsla(50,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(50,80%,72%)">⚡</div><div class="wfy-title">Acts</div><div class="wfy-sub">20 chapters</div></div><div class="wfy-card" style="--glow: hsla(280,70%,60%,.14); --shadow: hsla(280,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(280,80%,72%)">◈</div><div class="wfy-title">Matthew</div><div class="wfy-sub">28 chapters</div></div><div class="wfy-card" style="--glow: hsla(170,70%,60%,.14); --shadow: hsla(170,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(170,80%,72%)">☽</div><div class="wfy-title">Luke</div><div class="wfy-sub">17 selected chapters</div></div><div class="wfy-card" style="--glow: hsla(340,70%,60%,.14); --shadow: hsla(340,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(340,80%,72%)">⊕</div><div class="wfy-title">1 &amp; 2 Corinthians</div><div class="wfy-sub">29 chapters</div></div><div class="wfy-card" style="--glow: hsla(130,70%,60%,.14); --shadow: hsla(130,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(130,80%,72%)">✦</div><div class="wfy-title">Gal · Eph · Phil · Col</div><div class="wfy-sub">20 chapters</div></div><div class="wfy-card" style="--glow: hsla(25,70%,60%,.14); --shadow: hsla(25,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(25,80%,72%)">⚖</div><div class="wfy-title">Romans · James</div><div class="wfy-sub">21 chapters</div></div><div class="wfy-card" style="--glow: hsla(195,70%,60%,.14); --shadow: hsla(195,70%,55%,.3);"><div class="wfy-icon" style="color:hsl(195,80%,72%)">⛰</div><div class="wfy-title">Hebrews · 1 &amp; 2 Peter</div><div class="wfy-sub">21 chapters</div></div></div>
     <div class="wfy-footer">Your selection is saved — revisit any time.</div>
   </div>
 </div>
-<div id="wardify-loading"><div class="wfy-spinner"></div><div class="wfy-loading-text">Loading…</div></div>
+<div id="wardify-loading" class=""><div class="wfy-spinner"></div><div class="wfy-loading-text">Loading…</div></div>
 
 <!-- Settings Modal -->
-<div id="wfy-settings-overlay">
+<div id="wfy-settings-overlay" class="open">
   <div id="wfy-settings-modal">
-    <div class="wfy-s-title">&#9881;&#65039;&nbsp; Settings</div>
+    <div class="wfy-s-title">⚙️&nbsp; Settings</div>
 
     <div class="wfy-s-section">
       <div class="wfy-s-label">Display</div>
       <div class="wfy-s-row">
         <div><div class="wfy-s-row-text">Moving Backgrounds</div><div class="wfy-s-row-sub">Animated canvas behind each chapter</div></div>
         <label class="wfy-toggle">
-          <input type="checkbox" id="wfy-s-bg" checked/>
+          <input type="checkbox" id="wfy-s-bg" checked="">
           <div class="wfy-toggle-track"></div><div class="wfy-toggle-thumb"></div>
         </label>
       </div>
       <div class="wfy-s-row">
         <div><div class="wfy-s-row-text">Light Mode</div><div class="wfy-s-row-sub">Force light theme throughout</div></div>
         <label class="wfy-toggle">
-          <input type="checkbox" id="wfy-s-light"/>
+          <input type="checkbox" id="wfy-s-light">
           <div class="wfy-toggle-track"></div><div class="wfy-toggle-thumb"></div>
         </label>
       </div>
     </div>
 
     <div class="wfy-s-section">
-      <div class="wfy-s-label">Study Material <span style="color:rgba(180,170,255,.35);font-size:.63rem;"> &mdash; Default: Acts</span></div>
-      <div class="wfy-s-books" id="wfy-s-books"></div>
+      <div class="wfy-s-label">Study Material <span style="color:rgba(180,170,255,.35);font-size:.63rem;"> — Default: Acts</span></div>
+      <div class="wfy-s-books" id="wfy-s-books"><button class="wfy-s-book-btn active"><span style="font-size:.9em;margin-right:.3em">✦</span>John</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">⚡</span>Acts</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">◈</span>Matthew</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">☽</span>Luke</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">⊕</span>1 &amp; 2 Corinthians</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">✦</span>Gal · Eph · Phil · Col</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">⚖</span>Romans · James</button><button class="wfy-s-book-btn"><span style="font-size:.9em;margin-right:.3em">⛰</span>Hebrews · 1 &amp; 2 Peter</button></div>
     </div>
 
     <div class="wfy-s-section">
@@ -663,34 +2117,27 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
         <div class="wfy-s-row-text">Download this app for offline use</div>
         <div class="wfy-s-row-sub">Enter the access password to unlock download</div>
         <div class="wfy-s-pw-row">
-          <input class="wfy-s-pw-input" type="password" id="wfy-s-pw" placeholder="Password…"/>
+          <input class="wfy-s-pw-input" type="password" id="wfy-s-pw" placeholder="Password…">
           <button class="wfy-s-pw-btn" id="wfy-s-pw-btn">Download</button>
         </div>
-        <div class="wfy-s-pw-msg" id="wfy-s-pw-msg"></div>
+        <div class="wfy-s-pw-msg" id="wfy-s-pw-msg">Preparing download…</div>
       </div>
     </div>
 
     <div class="wfy-s-contact">
-      For material requests or errors, contact<br/>
-      <a href="mailto:torch71024@gmail.com">torch71024@gmail.com</a><br/>
+      For material requests or errors, contact<br>
+      <a href="mailto:torch71024@gmail.com">torch71024@gmail.com</a><br>
       Edits will be made shortly!
     </div>
 
     <button class="wfy-s-close" onclick="document.getElementById('wfy-settings-overlay').classList.remove('open')">Close</button>
   </div>
 </div>
-<div id="wardify-app">
-  <div id="bg-layer"><canvas id="bg-a"></canvas><canvas id="bg-b"></canvas></div>
-  <div id="root"></div>
+<div id="wardify-app" style="display: block;">
+  <div id="bg-layer" style="visibility: visible;"><canvas id="bg-a" width="738" height="680" style="opacity: 1;"></canvas><canvas id="bg-b" width="738" height="680" style="opacity: 0;"></canvas></div>
+  <div id="root"><div style="position: relative; min-height: 100vh;"><canvas width="738" height="680" style="position: fixed; top: 0px; left: 0px; width: 100%; height: 100%; z-index: 2; pointer-events: none;"></canvas><div class="tools-page" style="position: relative; z-index: 3;"><div class="top-nav-left"><button class="kq-nav-btn">← Back</button></div><div style="padding-top: 3rem;"><div class="tools-title" style="text-shadow: rgba(0, 0, 0, 0.8) 0px 2px 8px; background: rgba(0, 0, 0, 0.35); display: inline-block; padding: 0.3rem 1.2rem; border-radius: 10px;">More Tools</div><div class="tools-subtitle" style="text-shadow: rgba(0, 0, 0, 0.7) 0px 1px 4px; background: rgba(0, 0, 0, 0.25); display: inline-block; padding: 0.15rem 0.9rem; border-radius: 8px;">Study smarter · every verse, every angle</div><div class="tools-grid"><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">🔑</div><div class="tool-card-name">Keywords Quiz</div><div class="tool-card-desc">Keywords, phrases, or reverse mode — one chapter at a time</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">📖</div><div class="tool-card-name">Chapter Material Study</div><div class="tool-card-desc">Sections, key verses &amp; keywords for any chapter</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">↔</div><div class="tool-card-name">Reference Matching</div><div class="tool-card-desc">Match verses to references — or references to verses</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">🧺</div><div class="tool-card-name">Drag Study Game</div><div class="tool-card-desc">Sort keywords, phrases &amp; jump points into chapter baskets</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">🧭</div><div class="tool-card-name">Section Locator</div><div class="tool-card-desc">Match section headings to chapters — or flip it around</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon"><svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="4" fill="#e05050" opacity="0.9"></circle><circle cx="16" cy="6" r="4" fill="white" opacity="0.85"></circle><circle cx="6" cy="16" r="4" fill="white" opacity="0.85"></circle><circle cx="16" cy="16" r="4" fill="white" opacity="0.85"></circle></svg></div><div class="tool-card-name">Odd One Out</div><div class="tool-card-desc">Three from one chapter, one from another — spot the intruder</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">🌱</div><div class="tool-card-name">Situation Quotations</div><div class="tool-card-desc">What was the unique start of each spoken word in John?</div></div><div class="tool-card" style="opacity: 1; cursor: pointer;"><div class="tool-card-icon">⚖️</div><div class="tool-card-name">Answer Judge Material</div><div class="tool-card-desc">Navigate John by chapter and verse — glowing context reader</div></div><div class="tool-card" style="background: rgba(30, 25, 70, 0.55); border: 1.5px solid rgba(160, 140, 255, 0.4); cursor: pointer;"><div class="tool-card-icon">⚙️</div><div class="tool-card-name">Settings</div><div class="tool-card-desc">Theme, backgrounds, material &amp; offline download</div></div></div></div></div></div></div>
 </div>
-<div id="wfy-persistent-footer" style="position:fixed;bottom:0;left:0;width:100%;z-index:50;pointer-events:none;">
-  <div style="text-align:center;padding:.45rem .5rem;font-family:'Crimson Pro',serif;font-size:.72rem;color:rgba(180,170,255,.62);font-style:italic;line-height:1.6;background:linear-gradient(to top,rgba(13,2,33,.72) 0%,transparent 100%);pointer-events:all;">
-    For material requests or errors, contact
-    <a href="mailto:torch71024@gmail.com" style="color:rgba(210,195,255,.82);text-decoration:none;">torch71024@gmail.com</a>
-    &nbsp;&mdash;&nbsp;Edits will be made shortly!
-  </div>
-</div>
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script>
 /* ════════════════════════════════════════════════════════════
    COMPETITION CONFIG  —  Upstash Redis
    ════════════════════════════════════════════════════════════
@@ -6881,8 +8328,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -6908,7 +8355,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordRe.test(normalize(vv.t))) refs.push(`John ${cd.ch}:${vv.v}`);
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`John ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -7050,7 +8497,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -13881,8 +15334,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -13908,7 +15361,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordRe.test(normalize(vv.t))) refs.push(`Acts ${cd.ch}:${vv.v}`);
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`Acts ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -14050,7 +15503,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -22036,8 +23495,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -22063,7 +23522,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordRe.test(normalize(vv.t))) refs.push(`Matthew ${cd.ch}:${vv.v}`);
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`Matthew ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -22205,7 +23664,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -28222,8 +29687,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -28249,7 +29714,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -28391,7 +29856,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -34437,8 +35908,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -34461,7 +35932,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
+      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -34603,7 +36074,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -40411,8 +41888,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -40435,7 +41912,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
+      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -40577,7 +42054,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -46013,8 +47496,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -46037,7 +47520,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
+      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -46179,7 +47662,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -52191,8 +53680,8 @@ function AnswerJudgeMaterialPage({ onBack }){
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => all.push({ch:cd.ch, v:vv.v, t:vv.t})));
     const selIdx = all.findIndex(x => x.ch === ch && x.v === v);
     if(selIdx < 0) return [];
-    const start = Math.max(0, selIdx - 10);
-    const end = Math.min(all.length - 1, selIdx + 10);
+    const start = Math.max(0, selIdx - 5);
+    const end = Math.min(all.length - 1, selIdx + 5);
     return all.slice(start, end + 1).map(x => ({...x, isSelected: x.ch === ch && x.v === v}));
   }
 
@@ -52215,7 +53704,7 @@ function AnswerJudgeMaterialPage({ onBack }){
     const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push(`${chLabel(cd.ch)}:${vv.v}`);
+      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -52357,7 +53846,13 @@ function AnswerJudgeMaterialPage({ onBack }){
               {searchRefs.length === 0
                 ? <span style={{fontStyle:'italic', color:'var(--c-vmuted)'}}>No matches found</span>
                 : searchRefs.map((r,i) => (
-                    <span key={i} style={{marginRight:'.7rem', color:'var(--c-accent)'}}>{r}</span>
+                    <span key={i}
+                      onClick={()=>openVerse(r.ch, r.v)}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity='.65';e.currentTarget.style.textDecoration='underline';}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.textDecoration='none';}}
+                      style={{marginRight:'.65rem',color:'var(--c-accent)',cursor:'pointer',
+                        display:'inline-block',padding:'.08rem .28rem',borderRadius:5,
+                        background:'var(--c-accent-a)',transition:'opacity .12s',userSelect:'none'}}>{r.label}</span>
                   ))
               }
             </div>
@@ -53324,5 +54819,5 @@ activateBook = function(bookId){
 })();
 
 </script>
-</body>
-</html>
+
+</body></html>
