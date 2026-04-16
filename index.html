@@ -60581,7 +60581,7 @@ window.wardifyShowInfo = function(){
 
   function sendSession(reason){
     if(sent) return;
-    if(activeMs < 5000) return; // don't log sessions under 5 seconds
+    if(activeMs < 1000) return; // don't log sessions under 1 second
     sent = true;
     clearInterval(tickInterval);
     clearTimeout(inactivityTimer);
@@ -60597,13 +60597,21 @@ window.wardifyShowInfo = function(){
       reason: reason
     };
 
-    // Use sendBeacon for page close (most reliable), fetch for inactivity
+    // Send via fetch with keepalive
     var body = JSON.stringify(payload);
-    if(navigator.sendBeacon){
-      var blob = new Blob([body], {type:'application/json'});
-      navigator.sendBeacon(ENDPOINT, blob);
-    } else {
-      fetch(ENDPOINT, {method:'POST', body:body, keepalive:true}).catch(function(){});
+    try {
+      fetch(ENDPOINT, {
+        method: 'POST',
+        body: body,
+        keepalive: true,
+        headers: {'Content-Type': 'application/json'}
+      }).catch(function(){});
+    } catch(ex) {
+      // fallback to sendBeacon
+      try {
+        var blob = new Blob([body], {type:'application/json'});
+        navigator.sendBeacon(ENDPOINT, blob);
+      } catch(ex2) {}
     }
   }
 
