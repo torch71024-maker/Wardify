@@ -703,7 +703,7 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
       <button class="wfy-s-close" style="flex:1" onclick="document.getElementById('wfy-settings-overlay').classList.remove('open')">Close</button>
     </div>
     <button class="wfy-s-close" style="margin-top:.45rem;width:100%;color:rgba(255,120,120,.55);border-color:rgba(255,100,100,.2);"
-      onclick="if(confirm('Sign out? You will be asked for your name again next time.')){localStorage.removeItem('wardify_player_name');localStorage.removeItem('wardify_device_id');window.wardifyPlayerName=null;document.getElementById('wfy-settings-overlay').classList.remove('open');document.getElementById('wardify-name-screen').style.display='flex';document.getElementById('wardify-picker').style.display='none';document.getElementById('wardify-app').style.display='none';setTimeout(function(){var inp=document.getElementById('wardify-name-input');if(inp){inp.value='';inp.focus();}},100);}">
+      onclick="if(confirm('Sign out? You will be asked for your name again next time.')){localStorage.removeItem('wardify_player_name');localStorage.removeItem('wardify_device_id');window.wardifyPlayerName=null;window._wardifyTrackerStarted=false;if(window.wardifySendSession)try{window.wardifySendSession();}catch(e){};document.getElementById('wfy-settings-overlay').classList.remove('open');document.getElementById('wardify-name-screen').style.display='flex';document.getElementById('wardify-picker').style.display='none';document.getElementById('wardify-app').style.display='none';setTimeout(function(){var inp=document.getElementById('wardify-name-input');if(inp){inp.value='';inp.focus();}},100);}">
       Sign Out
     </button>
   </div>
