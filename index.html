@@ -60219,6 +60219,7 @@ function wardifySubmitName(){
 }
 
 function wardifyAfterName(){
+  wardifyStartTracker();
   var _saved=localStorage.getItem('wardify_book');
   if(_saved&&document.querySelector('script[type="wardify/jsx"][data-book="'+_saved+'"]')){
     document.getElementById('wardify-loading').classList.add('show');
@@ -60523,8 +60524,12 @@ window.wardifyShowInfo = function(){
 /* ════════════════════════════════════════════════════════════
    WARDIFY SESSION TRACKER
    Tracks active time per session and logs to Google Sheets.
-   Active time pauses on tab switch or 5 min inactivity.
+   Active time pauses on tab switch or 30s inactivity.
+   Only starts AFTER name is confirmed.
    ════════════════════════════════════════════════════════════ */
+function wardifyStartTracker(){
+  if(window._wardifyTrackerStarted) return;
+  window._wardifyTrackerStarted = true;
 (function(){
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
   var INACTIVITY_MS = 30 * 1000; // 30 seconds
@@ -60642,6 +60647,7 @@ window.wardifyShowInfo = function(){
   // Expose for manual triggers if needed
   window.wardifySendSession = function(){ tick(); sendSession('manual'); };
 })();
+}
 
 </script>
 </body>
