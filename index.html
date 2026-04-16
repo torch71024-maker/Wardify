@@ -618,6 +618,28 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 </style>
 </head>
 <body>
+<div id="wardify-name-screen" style="position:fixed;inset:0;z-index:9100;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;font-family:'Crimson Pro',serif;">
+  <canvas id="name-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+  <div style="position:relative;z-index:2;text-align:center;max-width:480px;width:100%;">
+    <div style="font-family:'Cinzel',serif;font-size:clamp(1.4rem,4vw,2rem);font-weight:600;letter-spacing:.1em;color:#f5e6c8;margin-bottom:.4rem;text-shadow:0 0 30px rgba(201,162,39,0.4);">WARDIFY</div>
+    <div style="font-family:'Cinzel',serif;font-size:.72rem;letter-spacing:.18em;color:rgba(201,162,39,0.6);margin-bottom:2.2rem;">BIBLE MEMORY TOOLS</div>
+    <div style="background:rgba(0,0,0,0.55);border:1px solid rgba(201,162,39,0.2);border-radius:16px;padding:2rem 1.8rem;backdrop-filter:blur(8px);">
+      <div style="font-size:1.05rem;color:#ddd5c4;line-height:1.75;margin-bottom:1.4rem;">
+        Please type your <strong style="color:#f5e6c8;">real first and last name</strong>.<br/>
+        <span style="font-style:italic;font-size:.88rem;color:rgba(200,185,160,0.6);">You will likely only have to do this once.</span>
+      </div>
+      <input id="wardify-name-input" type="text" placeholder="First Last"
+        style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(201,162,39,0.35);border-radius:8px;padding:.65rem 1rem;font-family:'Crimson Pro',serif;font-size:1.05rem;color:#f5e6c8;outline:none;margin-bottom:1rem;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter')wardifySubmitName();"
+      />
+      <button onclick="wardifySubmitName()"
+        style="width:100%;font-family:'Cinzel',serif;font-size:.82rem;letter-spacing:.08em;padding:.65rem;border-radius:8px;border:none;background:linear-gradient(135deg,#c9a227,#7a5e00);color:#0d0b1e;font-weight:700;cursor:pointer;">
+        Continue →
+      </button>
+      <div id="wardify-name-error" style="margin-top:.6rem;font-size:.8rem;color:#e07070;font-style:italic;min-height:1rem;"></div>
+    </div>
+  </div>
+</div>
 <div id="wardify-picker">
   <canvas id="picker-canvas"></canvas>
   <div class="wfy-content">
@@ -60165,13 +60187,85 @@ function activateBook(bookId){
   (new Function(dataTag.textContent+'\n'+_compiled[bookId]))();
 }
 
-var _saved=localStorage.getItem('wardify_book');
-if(_saved&&document.querySelector('script[type="wardify/jsx"][data-book="'+_saved+'"]')){
-  document.getElementById('wardify-loading').classList.add('show');
+/* ── Name / device ID setup ── */
+function wardifyGetDeviceId(){
+  var id=localStorage.getItem('wardify_device_id');
+  if(!id){
+    id='dev-'+Math.random().toString(36).slice(2,10)+'-'+Date.now().toString(36);
+    localStorage.setItem('wardify_device_id',id);
+  }
+  return id;
+}
+window.wardifyPlayerName=localStorage.getItem('wardify_player_name')||null;
+window.wardifyDeviceId=wardifyGetDeviceId();
+
+function wardifySubmitName(){
+  var input=document.getElementById('wardify-name-input');
+  var err=document.getElementById('wardify-name-error');
+  var val=(input?input.value:'').trim();
+  var parts=val.split(/\s+/).filter(Boolean);
+  if(parts.length<2){
+    if(err)err.textContent='Please enter both your first and last name.';
+    return;
+  }
+  localStorage.setItem('wardify_player_name',val);
+  window.wardifyPlayerName=val;
+  document.getElementById('wardify-name-screen').style.display='none';
+  wardifyAfterName();
+}
+
+function wardifyAfterName(){
+  var _saved=localStorage.getItem('wardify_book');
+  if(_saved&&document.querySelector('script[type="wardify/jsx"][data-book="'+_saved+'"]')){
+    document.getElementById('wardify-loading').classList.add('show');
+    document.getElementById('wardify-picker').style.display='none';
+    requestAnimationFrame(function(){setTimeout(function(){activateBook(_saved);},80);});
+  }else{
+    document.getElementById('wardify-picker').style.display='flex';
+    startPickerAnim();
+  }
+}
+
+/* Animate the name screen canvas (reuse picker star field) */
+(function(){
+  var ns=document.getElementById('wardify-name-screen');
+  if(!ns)return;
+  var cv=document.getElementById('name-canvas');
+  if(!cv)return;
+  var ctx=cv.getContext('2d');
+  var W,H;
+  function resize(){W=cv.width=window.innerWidth;H=cv.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  var pts=Array.from({length:120},function(){
+    return{x:Math.random(),y:Math.random(),vx:(Math.random()-.5)*.00025,vy:(Math.random()-.5)*.0002,
+      r:.2+Math.random()*1.4,tw:Math.random()*Math.PI*2,spd:.005+Math.random()*.015};
+  });
+  function draw(){
+    if(ns.style.display==='none')return;
+    requestAnimationFrame(draw);
+    ctx.fillStyle='rgba(0,0,6,0.28)';ctx.fillRect(0,0,W,H);
+    pts.forEach(function(p){
+      p.x+=p.vx;p.y+=p.vy;p.tw+=p.spd;
+      if(p.x<0)p.x=1;if(p.x>1)p.x=0;if(p.y<0)p.y=1;if(p.y>1)p.y=0;
+      var a=.3+Math.sin(p.tw)*.25;
+      ctx.fillStyle='rgba(201,162,39,'+a+')';
+      ctx.beginPath();ctx.arc(p.x*W,p.y*H,p.r,0,Math.PI*2);ctx.fill();
+    });
+  }
+  draw();
+})();
+
+/* ── Startup: show name screen if no name saved, else go straight in ── */
+if(!window.wardifyPlayerName){
+  document.getElementById('wardify-name-screen').style.display='flex';
   document.getElementById('wardify-picker').style.display='none';
-  requestAnimationFrame(function(){setTimeout(function(){activateBook(_saved);},80);});
+  setTimeout(function(){
+    var inp=document.getElementById('wardify-name-input');
+    if(inp)inp.focus();
+  },200);
 }else{
-  startPickerAnim();
+  document.getElementById('wardify-name-screen').style.display='none';
+  wardifyAfterName();
 }
 
 
@@ -60420,6 +60514,132 @@ window.wardifyShowInfo = function(){
   document.body.appendChild(ov);
   ov.addEventListener('click', function(e){ if(e.target===ov){ ov.style.opacity='0'; ov.style.pointerEvents='none'; } });
 };
+
+
+/* ════════════════════════════════════════════════════════════
+   WARDIFY SESSION TRACKER
+   Tracks active time per session and logs to Google Sheets.
+   Active time pauses on tab switch or 5 min inactivity.
+   ════════════════════════════════════════════════════════════ */
+(function(){
+  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+  var INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
+
+  var sessionStart = Date.now();
+  var activeMs = 0;
+  var lastActive = Date.now();
+  var isActive = true;
+  var inactivityTimer = null;
+  var sent = false;
+
+  function getPlayerName(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
+  function getDeviceId(){ return localStorage.getItem('wardify_device_id') || 'unknown'; }
+  function getCurrentBook(){
+    return localStorage.getItem('wardify_book') || 'none';
+  }
+
+  function formatDuration(ms){
+    var s = Math.round(ms / 1000);
+    var m = Math.floor(s / 60);
+    s = s % 60;
+    return m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+  }
+
+  function tick(){
+    if(isActive){
+      var now = Date.now();
+      activeMs += now - lastActive;
+      lastActive = now;
+    }
+  }
+
+  // Tick every second to accumulate active time
+  var tickInterval = setInterval(tick, 1000);
+
+  function pauseActive(){
+    if(isActive){
+      tick(); // capture any remaining time
+      isActive = false;
+    }
+  }
+
+  function resumeActive(){
+    if(!isActive){
+      lastActive = Date.now();
+      isActive = true;
+    }
+    resetInactivity();
+  }
+
+  function resetInactivity(){
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(function(){
+      pauseActive();
+      sendSession('inactivity');
+    }, INACTIVITY_MS);
+  }
+
+  function sendSession(reason){
+    if(sent) return;
+    if(activeMs < 5000) return; // don't log sessions under 5 seconds
+    sent = true;
+    clearInterval(tickInterval);
+    clearTimeout(inactivityTimer);
+
+    var payload = {
+      player: getPlayerName(),
+      device: getDeviceId(),
+      book: getCurrentBook(),
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(),
+      duration: formatDuration(activeMs),
+      duration_ms: activeMs,
+      reason: reason
+    };
+
+    // Use sendBeacon for page close (most reliable), fetch for inactivity
+    var body = JSON.stringify(payload);
+    if(navigator.sendBeacon){
+      var blob = new Blob([body], {type:'application/json'});
+      navigator.sendBeacon(ENDPOINT, blob);
+    } else {
+      fetch(ENDPOINT, {method:'POST', body:body, keepalive:true}).catch(function(){});
+    }
+  }
+
+  // Tab visibility changes
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden){
+      pauseActive();
+    } else {
+      resumeActive();
+    }
+  });
+
+  // Activity events
+  ['mousedown','keydown','touchstart','scroll'].forEach(function(ev){
+    document.addEventListener(ev, function(){
+      if(!isActive) resumeActive();
+      else resetInactivity();
+    }, {passive:true});
+  });
+
+  // Page unload
+  window.addEventListener('beforeunload', function(){
+    tick();
+    sendSession('unload');
+  });
+  window.addEventListener('pagehide', function(){
+    tick();
+    sendSession('pagehide');
+  });
+
+  // Start inactivity timer
+  resetInactivity();
+
+  // Expose for manual triggers if needed
+  window.wardifySendSession = function(){ tick(); sendSession('manual'); };
+})();
 
 </script>
 </body>
