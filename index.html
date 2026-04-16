@@ -60597,22 +60597,12 @@ window.wardifyShowInfo = function(){
       reason: reason
     };
 
-    // Send via fetch with keepalive
-    var body = JSON.stringify(payload);
-    try {
-      fetch(ENDPOINT, {
-        method: 'POST',
-        body: body,
-        keepalive: true,
-        headers: {'Content-Type': 'application/json'}
-      }).catch(function(){});
-    } catch(ex) {
-      // fallback to sendBeacon
-      try {
-        var blob = new Blob([body], {type:'application/json'});
-        navigator.sendBeacon(ENDPOINT, blob);
-      } catch(ex2) {}
-    }
+    // Encode payload as URL params and use image ping (works from file://)
+    var params = Object.keys(payload).map(function(k){
+      return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+    }).join('&');
+    var img = new Image();
+    img.src = ENDPOINT + '?callback=wardify&' + params;
   }
 
   // Tab visibility changes
