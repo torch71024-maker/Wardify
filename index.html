@@ -4216,7 +4216,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -5341,7 +5348,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -6068,9 +6082,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -6703,7 +6727,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -7214,7 +7244,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -8287,6 +8324,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -12239,7 +12282,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -13349,7 +13399,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -14007,9 +14064,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -14642,7 +14709,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -15090,7 +15163,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -16162,6 +16242,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -21220,7 +21306,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -22379,7 +22472,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -23037,9 +23137,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -23672,7 +23782,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -24120,7 +24236,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -25192,6 +25315,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -28323,7 +28452,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -29441,7 +29577,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -30099,9 +30242,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -30733,7 +30886,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -31181,7 +31340,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -32253,6 +32419,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -35524,7 +35696,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -36680,7 +36859,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -37424,9 +37610,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -38073,7 +38269,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -38644,7 +38846,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -39321,6 +39530,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -42388,7 +42603,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -43516,7 +43738,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -44273,9 +44502,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -44922,7 +45161,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -45493,7 +45738,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -46170,6 +46422,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -49175,7 +49433,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -50252,7 +50517,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -50952,9 +51224,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -51506,7 +51788,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -51970,7 +52258,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -52647,6 +52942,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -55913,7 +56214,14 @@ function KeywordQuiz({ onBack }) {
   function advance(){
     clearTimeout(autoRef.current);
     const nextIdx=qIdx+1;
-    if(nextIdx>=pool.length){ setPhase('results'); return; }
+    if(nextIdx>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const ch=[...selChs];
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
+      }
+      return;
+    }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
     setHintUsedThisQ(false); setHintedChapters(null);
     if(window.BgMgr) window.BgMgr.setChapter(pool[nextIdx].ch);
@@ -57046,7 +57354,14 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
   function advance(){
     clearTimeout(autoRef.current);
     const next=qIdx+1;
-    if(next>=pool.length){ setPhase('results'); return; }
+    if(next>=pool.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const c=history.filter(h=>h.correct).length+1;
+        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
+      }
+      return;
+    }
     setQIdx(next); setPicked(null); setTimeLeft(20);
     choicesRef.current={qIdx:-1,choices:null};
   }
@@ -57803,9 +58118,19 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
-    if(rem.length<activeChs.length){setPhase('results');return;}
+    if(rem.length<activeChs.length){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     const next=buildRound(pool,usedRef.current,activeChs);
-    if(next.length===0){setPhase('results');return;}
+    if(next.length===0){
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
+      }
+      setPhase('results');return;
+    }
     next.forEach(i=>usedRef.current.add(i.id));
     // Restore all tray elements
     roundItems.forEach(i=>{const el=elemRef.current[i.id];if(el){el.style.opacity='1';el.style.display='';}});
@@ -58452,7 +58777,13 @@ function OddOneOutPage({ onBack }){
 
   function nextQuestion(){
     const q=buildQuestion(selChs,mode);
-    if(!q){ setPhase('results'); return; }
+    if(!q){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      }
+      return;
+    }
     setQuestion(q); setChosen(null); setFeedbackState(null);
     startTimer();
   }
@@ -59023,7 +59354,14 @@ function SectionLocatorPage({ onBack }){
     setTimeout(()=>{
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
-      if(next>=questions.length){ setPhase('results'); }
+      if(next>=questions.length){
+      setPhase('results');
+      if(window.wardifyLogScore){
+        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
+        const c=hist.filter(h=>h.correct).length;
+        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
+      }
+    }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -59700,6 +60038,12 @@ function App({ onScore }){
       });
     });
     setScore({c,tot}); setChk(true);
+    // Log score — hints disqualify a perfect run
+    if(window.wardifyLogScore){
+      const refs=selVerses.map(v=>v.ch+'-'+v.v);
+      const anyHinted=Object.keys(hinted).length>0;
+      window.wardifyLogScore.mainframe(level||1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+    }
   }
 
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -60655,12 +60999,12 @@ function wardifyStartTracker(){
     }
   });
 
-  // Activity events
-  ['mousedown','keydown','touchstart','scroll'].forEach(function(ev){
+  // Activity events — use capture:true so events inside inputs still register
+  ['mousedown','keydown','keyup','input','touchstart','scroll','click'].forEach(function(ev){
     document.addEventListener(ev, function(){
       if(!isActive) resumeActive();
       else resetInactivity();
-    }, {passive:true});
+    }, {passive:true, capture:true});
   });
 
   // Page unload
@@ -60684,6 +61028,142 @@ function wardifyStartTracker(){
 })();
 }
 
+/* ════════════════════════════════════════════════════════════
+   WARDIFY SCORE LOGGER
+   Sends score events to Google Sheets with points calculation.
+   Daily limits enforced via localStorage.
+   ════════════════════════════════════════════════════════════ */
+window.wardifyLogScore = (function(){
+  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+  var DAILY_LIMIT = 30;
+  var SECTION_LOCATOR_LIMIT = 15;
+
+  function getToday(){ return new Date().toLocaleDateString(); }
+  function getPlayer(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
+  function getDevice(){ return localStorage.getItem('wardify_device_id') || 'unknown'; }
+
+  function getDailyKey(tool){
+    return 'wfy_pts_' + tool + '_' + getToday().replace(/\//g,'');
+  }
+
+  function getDailyPoints(tool){
+    return parseFloat(localStorage.getItem(getDailyKey(tool)) || '0');
+  }
+
+  function addDailyPoints(tool, pts){
+    var key = getDailyKey(tool);
+    var current = getDailyPoints(tool);
+    localStorage.setItem(key, String(Math.round((current + pts) * 100) / 100));
+  }
+
+  function getVerseKey(tool, ref){
+    return 'wfy_vref_' + tool + '_' + getToday().replace(/\//g,'') + '_' + ref;
+  }
+
+  function verseUsedToday(tool, ref){
+    return !!localStorage.getItem(getVerseKey(tool, ref));
+  }
+
+  function markVerseUsed(tool, ref){
+    localStorage.setItem(getVerseKey(tool, ref), '1');
+  }
+
+  function send(payload){
+    var params = Object.keys(payload).map(function(k){
+      return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
+    }).join('&');
+    var img = new Image();
+    img.src = ENDPOINT + '?type=score&' + params;
+  }
+
+  // ── MAINFRAME (fill-in-the-blanks) ──
+  // level: 1-5, correct: number, total: number, verseRefs: array of "ch-v" strings
+  function logMainframe(level, correct, total, verseRefs, selMode){
+    var pct = total > 0 ? correct / total : 0;
+    var pts = 0;
+    var eligible = [];
+
+    if(level === 5 && pct === 1.0 && selMode !== 'custom' && selMode !== 'hinted'){
+      // 2 points per perfect level-5 verse, once per verse per day
+      (verseRefs || []).forEach(function(ref){
+        if(!verseUsedToday('mainframe', ref)){
+          pts += 2;
+          eligible.push(ref);
+        }
+      });
+      eligible.forEach(function(ref){ markVerseUsed('mainframe', ref); });
+    }
+
+    var limit = DAILY_LIMIT;
+    var dailySoFar = getDailyPoints('mainframe');
+    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
+    if(pts > 0) addDailyPoints('mainframe', pts);
+
+    send({
+      player: getPlayer(), device: getDevice(),
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(),
+      tool: 'Mainframe', level: level,
+      correct: correct, total: total,
+      pct: Math.round(pct * 100),
+      points: pts
+    });
+  }
+
+  // ── KEYWORD QUIZ / SECTION LOCATOR / ODD ONE OUT / REFERENCE MATCHING ──
+  // tool: string, correct: number, total: number, chapterCount: number (must be from full chapters only)
+  function logQuizTool(tool, correct, total, chapterCount){
+    var limit = tool === 'Section Locator' ? SECTION_LOCATOR_LIMIT : DAILY_LIMIT;
+    var pts = 0;
+
+    if(chapterCount >= 3){
+      var multiplier = chapterCount * 0.1;
+      pts = correct * multiplier;
+      pts = Math.round(pts * 100) / 100;
+    }
+
+    var dailySoFar = getDailyPoints(tool);
+    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
+    pts = Math.round(pts * 100) / 100;
+    if(pts > 0) addDailyPoints(tool, pts);
+
+    var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+    send({
+      player: getPlayer(), device: getDevice(),
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(),
+      tool: tool, chapters: chapterCount,
+      correct: correct, total: total,
+      pct: pct, points: pts
+    });
+  }
+
+  // ── DRAG STUDY GAME ──
+  // correct: number, total: number
+  function logDrag(correct, total){
+    var pts = correct * 0.1;
+    pts = Math.round(pts * 100) / 100;
+    var dailySoFar = getDailyPoints('Drag Study');
+    pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
+    pts = Math.round(pts * 100) / 100;
+    if(pts > 0) addDailyPoints('Drag Study', pts);
+
+    var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+    send({
+      player: getPlayer(), device: getDevice(),
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(),
+      tool: 'Drag Study', correct: correct, total: total,
+      pct: pct, points: pts
+    });
+  }
+
+  return {
+    mainframe: logMainframe,
+    quiz: logQuizTool,
+    drag: logDrag
+  };
+})();
 </script>
 </body>
 </html>
