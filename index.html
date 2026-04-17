@@ -4355,10 +4355,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -5487,10 +5490,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -6866,9 +6871,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -7383,11 +7390,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -12421,10 +12429,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -13538,10 +13549,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -14848,9 +14861,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -15302,11 +15317,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -21445,10 +21461,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -22611,10 +22630,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -23921,9 +23942,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -24375,11 +24398,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -28591,10 +28615,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -29716,10 +29743,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -31025,9 +31054,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -31479,11 +31510,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -35835,10 +35867,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -36998,10 +37033,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -38408,9 +38445,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -38985,11 +39024,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -42742,10 +42782,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -43877,10 +43920,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -45300,9 +45345,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -45877,11 +45924,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -49572,10 +49620,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -50656,10 +50707,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -51927,9 +51980,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -52397,11 +52452,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
@@ -56353,10 +56409,13 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const ch=[...selChs];
-        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length+1, nextIdx, ch.length);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const ch=[...selChs];
+          const correctCount=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
+        }
+      }, 100);
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -57493,10 +57552,12 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const c=history.filter(h=>h.correct).length+1;
-        window.wardifyLogScore.quiz('Reference Matching', c, next, selChs?selChs.size:0);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
+        }
+      }, 100);
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -58916,9 +58977,11 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+        }
+      }, 100);
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -59493,11 +59556,12 @@ function SectionLocatorPage({ onBack }){
       const next=qIdx+1;
       if(next>=questions.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-        const hist=[...history,{correct:chosen===questions[qIdx].answer}];
-        const c=hist.filter(h=>h.correct).length;
-        window.wardifyLogScore.quiz('Section Locator', c, hist.length, selChs.size);
-      }
+      setTimeout(function(){
+        if(window.wardifyLogScore){
+          const c=history.filter(h=>h.correct).length;
+          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
+        }
+      }, 100);
     }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
