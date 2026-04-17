@@ -60923,6 +60923,8 @@ function wardifySubmitName(){
     if(err)err.textContent='Please enter both your first and last name.';
     return;
   }
+  // Auto-capitalize each word
+  val=parts.map(function(p){return p.charAt(0).toUpperCase()+p.slice(1).toLowerCase();}).join(' ');
   localStorage.setItem('wardify_player_name',val);
   window.wardifyPlayerName=val;
   document.getElementById('wardify-name-screen').style.display='none';
