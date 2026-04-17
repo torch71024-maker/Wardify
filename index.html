@@ -719,7 +719,6 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
    Daily limits enforced via localStorage.
    ════════════════════════════════════════════════════════════ */
 window.wardifyLogScore = (function(){
-  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
   var DAILY_LIMIT = 30;
   var SECTION_LOCATOR_LIMIT = 15;
 
@@ -730,90 +729,66 @@ window.wardifyLogScore = (function(){
   function getDailyKey(tool){
     return 'wfy_pts_' + tool + '_' + getToday().replace(/\//g,'');
   }
-
   function getDailyPoints(tool){
     return parseFloat(localStorage.getItem(getDailyKey(tool)) || '0');
   }
-
   function addDailyPoints(tool, pts){
     var key = getDailyKey(tool);
     var current = getDailyPoints(tool);
     localStorage.setItem(key, String(Math.round((current + pts) * 100) / 100));
   }
-
   function getVerseKey(tool, ref){
     return 'wfy_vref_' + tool + '_' + getToday().replace(/\//g,'') + '_' + ref;
   }
-
   function verseUsedToday(tool, ref){
     return !!localStorage.getItem(getVerseKey(tool, ref));
   }
-
   function markVerseUsed(tool, ref){
     localStorage.setItem(getVerseKey(tool, ref), '1');
   }
 
-  function send(payload){
-    var params = Object.keys(payload).map(function(k){
-      return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
-    }).join('&');
-    var img = new Image();
-    img.src = ENDPOINT + '?type=score&' + params;
+  function queueScore(payload){
+    // Store in localStorage queue — session tracker sends on exit
+    var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
+    queue.push(payload);
+    localStorage.setItem('wfy_score_queue', JSON.stringify(queue));
   }
 
-  // ── MAINFRAME (fill-in-the-blanks) ──
-  // level: 1-5, correct: number, total: number, verseRefs: array of "ch-v" strings
   function logMainframe(level, correct, total, verseRefs, selMode){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
     var eligible = [];
-
-    if(level === 5 && pct === 1.0 && selMode !== 'custom'){
-      // 2 points per perfect level-5 verse, once per verse per day
+    if(level === 5 && pct === 1.0 && selMode !== 'custom' && selMode !== 'hinted'){
       (verseRefs || []).forEach(function(ref){
-        if(!verseUsedToday('mainframe', ref)){
-          pts += 2;
-          eligible.push(ref);
-        }
+        if(!verseUsedToday('mainframe', ref)){ pts += 2; eligible.push(ref); }
       });
       eligible.forEach(function(ref){ markVerseUsed('mainframe', ref); });
     }
-
-    var limit = DAILY_LIMIT;
     var dailySoFar = getDailyPoints('mainframe');
-    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
+    pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
     if(pts > 0) addDailyPoints('mainframe', pts);
-
-    send({
+    queueScore({
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
       tool: 'Mainframe', level: level,
       correct: correct, total: total,
-      pct: Math.round(pct * 100),
-      points: pts
+      pct: Math.round(pct * 100), points: pts
     });
   }
 
-  // ── KEYWORD QUIZ / SECTION LOCATOR / ODD ONE OUT / REFERENCE MATCHING ──
-  // tool: string, correct: number, total: number, chapterCount: number (must be from full chapters only)
   function logQuizTool(tool, correct, total, chapterCount){
     var limit = tool === 'Section Locator' ? SECTION_LOCATOR_LIMIT : DAILY_LIMIT;
     var pts = 0;
-
     if(chapterCount >= 3){
-      var multiplier = chapterCount * 0.1;
-      pts = correct * multiplier;
-      pts = Math.round(pts * 100) / 100;
+      pts = Math.round(correct * chapterCount * 0.1 * 100) / 100;
     }
-
     var dailySoFar = getDailyPoints(tool);
     pts = Math.min(pts, Math.max(0, limit - dailySoFar));
     pts = Math.round(pts * 100) / 100;
     if(pts > 0) addDailyPoints(tool, pts);
-
     var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-    send({
+    queueScore({
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
@@ -823,18 +798,14 @@ window.wardifyLogScore = (function(){
     });
   }
 
-  // ── DRAG STUDY GAME ──
-  // correct: number, total: number
   function logDrag(correct, total){
-    var pts = correct * 0.1;
-    pts = Math.round(pts * 100) / 100;
+    var pts = Math.round(correct * 0.1 * 100) / 100;
     var dailySoFar = getDailyPoints('Drag Study');
     pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
     pts = Math.round(pts * 100) / 100;
     if(pts > 0) addDailyPoints('Drag Study', pts);
-
     var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-    send({
+    queueScore({
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
@@ -843,11 +814,7 @@ window.wardifyLogScore = (function(){
     });
   }
 
-  return {
-    mainframe: logMainframe,
-    quiz: logQuizTool,
-    drag: logDrag
-  };
+  return { mainframe: logMainframe, quiz: logQuizTool, drag: logDrag };
 })();
 
 /* ════════════════════════════════════════════════════════════
@@ -61373,6 +61340,22 @@ function wardifyStartTracker(){
     };
 
     sendPayload(payload);
+
+    // Send any queued score events
+    try {
+      var SCORE_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
+      if(queue.length > 0){
+        localStorage.removeItem('wfy_score_queue');
+        queue.forEach(function(scorePayload){
+          var params = Object.keys(scorePayload).map(function(k){
+            return encodeURIComponent(k)+'='+encodeURIComponent(scorePayload[k]);
+          }).join('&');
+          var img = new Image();
+          img.src = SCORE_ENDPOINT + '?type=score&' + params;
+        });
+      }
+    } catch(e) {}
   }
 
   // Tab visibility changes
