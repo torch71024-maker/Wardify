@@ -60588,40 +60588,41 @@ function wardifyStartTracker(){
     }, INACTIVITY_MS);
   }
 
-  function sendPayload(payload){
+  function sendPayload(payload, isRetry){
     var params = Object.keys(payload).map(function(k){
       return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
     }).join('&');
-    var img = new Image();
-    img.src = ENDPOINT + '?callback=wardify&' + params;
-    img.onerror = function(){
-      // Failed — save to retry queue
-      var queue = JSON.parse(localStorage.getItem('wardify_retry_queue')||'[]');
-      queue.push(payload);
-      localStorage.setItem('wardify_retry_queue', JSON.stringify(queue));
-    };
+    // Use fetch with no-cors — if it throws, we're offline
+    try {
+      fetch(ENDPOINT + '?callback=wardify&' + params, {mode:'no-cors'})
+        .then(function(){
+          // Success — if this was a retry, it's already removed from queue
+        })
+        .catch(function(){
+          // Failed — queue it if not already queued
+          if(!isRetry){
+            var queue = JSON.parse(localStorage.getItem('wardify_retry_queue')||'[]');
+            queue.push(payload);
+            localStorage.setItem('wardify_retry_queue', JSON.stringify(queue));
+          }
+        });
+    } catch(ex) {
+      if(!isRetry){
+        var queue = JSON.parse(localStorage.getItem('wardify_retry_queue')||'[]');
+        queue.push(payload);
+        localStorage.setItem('wardify_retry_queue', JSON.stringify(queue));
+      }
+    }
   }
 
   function flushRetryQueue(){
     var queue = JSON.parse(localStorage.getItem('wardify_retry_queue')||'[]');
     if(!queue.length) return;
-    var remaining = [];
-    queue.forEach(function(payload){
-      var params = Object.keys(payload).map(function(k){
-        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
-      }).join('&');
-      var img = new Image();
-      img.src = ENDPOINT + '?callback=wardify&' + params;
-      img.onerror = function(){ remaining.push(payload); };
-    });
-    // Clear queue — failed ones get re-added via onerror
+    // Clear queue first, then attempt each one
     localStorage.setItem('wardify_retry_queue', JSON.stringify([]));
-    // Give onerror time to fire, then restore any that failed again
-    setTimeout(function(){
-      var still = JSON.parse(localStorage.getItem('wardify_retry_queue')||'[]');
-      var merged = still.concat(remaining);
-      localStorage.setItem('wardify_retry_queue', JSON.stringify(merged));
-    }, 8000);
+    queue.forEach(function(payload){
+      sendPayload(payload, true);
+    });
   }
 
   function sendSession(reason){
