@@ -748,10 +748,25 @@ window.wardifyLogScore = (function(){
   }
 
   function queueScore(payload){
-    // Store in localStorage queue — session tracker sends on exit
-    var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
-    queue.push(payload);
-    localStorage.setItem('wfy_score_queue', JSON.stringify(queue));
+    // Store in localStorage queue as backup
+    try {
+      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
+      queue.push(payload);
+      localStorage.setItem('wfy_score_queue', JSON.stringify(queue));
+    } catch(e){}
+    // ALSO send immediately
+    try {
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      var img = new Image();
+      img.src = ENDPOINT + '?type=score&' + params;
+      // Debug marker
+      localStorage.setItem('wfy_last_score_attempt', new Date().toISOString() + ' | ' + payload.tool + ' | ' + JSON.stringify(payload));
+    } catch(e){
+      localStorage.setItem('wfy_last_score_error', e.toString());
+    }
   }
 
   function logMainframe(level, correct, total, verseRefs, selMode){
