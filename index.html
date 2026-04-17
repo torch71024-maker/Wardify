@@ -4355,11 +4355,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -4381,6 +4376,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -4568,7 +4571,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -5500,6 +5503,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -5522,7 +5532,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -5693,7 +5703,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -6189,6 +6199,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -6265,7 +6282,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <canvas ref={bgRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:680,margin:'0 auto',padding:'1rem 1rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.3)',background:'rgba(255,255,255,0.7)'}} onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.3)',background:'rgba(255,255,255,0.7)'}} onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.5rem',letterSpacing:'.08em',color:'#7ec8f8',marginBottom:'.25rem',textShadow:'0 2px 10px rgba(60,140,255,0.4)'}}>🧺 Drag Study Game</div>
@@ -6383,7 +6400,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -6854,6 +6871,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -7121,7 +7145,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -7363,6 +7387,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -7486,7 +7517,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -12421,11 +12452,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -12447,6 +12473,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -12634,7 +12668,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -13551,6 +13585,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -13573,7 +13614,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -13744,7 +13785,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -14171,6 +14212,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -14365,7 +14413,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -14836,6 +14884,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -15103,7 +15158,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -15282,6 +15337,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -15405,7 +15467,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -21445,11 +21507,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -21471,6 +21528,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -21658,7 +21723,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -22624,6 +22689,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -22646,7 +22718,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -22817,7 +22889,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -23244,6 +23316,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -23438,7 +23517,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -23909,6 +23988,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -24176,7 +24262,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -24355,6 +24441,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -24478,7 +24571,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -28591,11 +28684,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -28617,6 +28705,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -28804,7 +28900,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -29729,6 +29825,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -29751,7 +29854,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -29922,7 +30025,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -30349,6 +30452,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -30543,7 +30653,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -31013,6 +31123,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -31280,7 +31397,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -31459,6 +31576,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -31582,7 +31706,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -35835,11 +35959,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -35861,6 +35980,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -36048,7 +36175,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -37011,6 +37138,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -37033,7 +37167,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -37204,7 +37338,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -37717,6 +37851,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -37911,7 +38052,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -38396,6 +38537,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -38663,7 +38811,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -38965,6 +39113,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -39088,7 +39243,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -42742,11 +42897,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -42768,6 +42918,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -42955,7 +43113,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -43890,6 +44048,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -43912,7 +44077,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -44083,7 +44248,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -44609,6 +44774,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -44803,7 +44975,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -45288,6 +45460,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -45555,7 +45734,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -45857,6 +46036,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -45980,7 +46166,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -49572,11 +49758,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -49598,6 +49779,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -49785,7 +49974,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -50669,6 +50858,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -50691,7 +50887,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -50862,7 +51058,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -51331,6 +51527,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -51525,7 +51728,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -51915,6 +52118,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -52182,7 +52392,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -52377,6 +52587,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -52500,7 +52717,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -56353,11 +56570,6 @@ function KeywordQuiz({ onBack }) {
     const nextIdx=qIdx+1;
     if(nextIdx>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const ch=[...selChs];
-          const correctCount=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Keywords Quiz', correctCount, pool.length, ch.length);
-        }
       return;
     }
     setQIdx(nextIdx); setPicked(null); setTimeLeft(TIMER_MAX);
@@ -56379,6 +56591,14 @@ function KeywordQuiz({ onBack }) {
   }
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(TIMER_MAX); setHistory([]); setHintsAvailable(0); setHintUsedThisQ(false); setHintedChapters(null); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
+
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      const ch=[...selChs];
+      window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, ch.length);
+    }
+  },[phase]);
 
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
@@ -56566,7 +56786,7 @@ function KeywordQuiz({ onBack }) {
     return (
       <div className="kq-wrap">
         <div className="top-nav">
-          <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+          <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
         </div>
 
         <div className="kq-title" style={{marginBottom:'.2rem'}}>Keywords Quiz</div>
@@ -57506,6 +57726,13 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
 
   function restart(){ setPhase('setup'); setPicked(null); setTimeLeft(20); setHistory([]); clearTimeout(timerRef.current); clearTimeout(autoRef.current); }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0);
+    }
+  },[phase]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -57528,7 +57755,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60,display:'flex',gap:'.6rem'}}>
-            <button className="kq-nav-btn" onClick={onBack}>← Back</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Reference Matching',history.filter(h=>h.correct).length,history.length,selChs?selChs.size:0);}onBack();}}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.6rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.55rem',letterSpacing:'.08em',color:'#e8e8f0',marginBottom:'.3rem'}}>Reference Matching</div>
@@ -57699,7 +57926,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:700,margin:'0 auto',padding:'1rem 1.2rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:'.5rem',marginBottom:'1rem'}}>
-            <button className="kq-nav-btn" onClick={restart}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Keywords Quiz',history.filter(h=>h.correct).length,history.length,[...selChs].length);}restart();}}>✕ Exit</button>
             <div style={{display:'flex',alignItems:'center',gap:'.7rem'}}>
               <span style={{fontFamily:'Cinzel,serif',fontSize:'.63rem',color:'rgba(180,180,200,0.5)'}}>{qIdx+1}/{pool.length}</span>
               <div style={{background:'rgba(70,70,90,0.4)',borderRadius:20,height:4,width:80,overflow:'hidden'}}>
@@ -58225,6 +58452,13 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     return sh(avail).slice(0,TARGET);
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -58419,7 +58653,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -58904,6 +59138,13 @@ function OddOneOutPage({ onBack }){
     return null;
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -59171,7 +59412,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -59473,6 +59714,13 @@ function SectionLocatorPage({ onBack }){
     });
   }
 
+  React.useEffect(()=>{
+    if(phase!=='results') return;
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size);
+    }
+  },[phase]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -59596,7 +59844,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>setPhase('setup')}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
