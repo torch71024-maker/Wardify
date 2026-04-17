@@ -692,6 +692,19 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
       </div>
     </div>
 
+    <div class="wfy-s-section">
+      <div class="wfy-s-label">Admin Access</div>
+      <div class="wfy-s-row" style="flex-direction:column;align-items:flex-start;gap:.3rem;">
+        <div class="wfy-s-row-text">View tracking spreadsheet</div>
+        <div class="wfy-s-row-sub">Admin password required</div>
+        <div class="wfy-s-pw-row">
+          <input class="wfy-s-pw-input" type="password" id="wfy-s-admin-pw" placeholder="Password…"/>
+          <button class="wfy-s-pw-btn" onclick="(function(){var v=document.getElementById('wfy-s-admin-pw').value;var m=document.getElementById('wfy-s-admin-msg');if(v==='lionofjudah'){window.open('https://docs.google.com/spreadsheets/d/1-3siXZ8KaBpRD7hzLQggBbwoEaOk46UYm0VorpXw9HM/edit?gid=1217705510#gid=1217705510','_blank');m.textContent='Opening…';m.className='wfy-s-pw-msg ok';document.getElementById('wfy-s-admin-pw').value='';}else{m.textContent='Incorrect password.';m.className='wfy-s-pw-msg err';}})();">Open</button>
+        </div>
+        <div class="wfy-s-pw-msg" id="wfy-s-admin-msg"></div>
+      </div>
+    </div>
+
     <div class="wfy-s-contact">
       For material requests or errors, contact<br/>
       <a href="mailto:torch71024@gmail.com">torch71024@gmail.com</a><br/>
@@ -769,18 +782,22 @@ window.wardifyLogScore = (function(){
     }
   }
 
-  function logMainframe(level, correct, total, verseRefs, selMode){
+  function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
-    var eligible = [];
-    if(level === 5 && pct === 1.0 && selMode !== 'custom' && selMode !== 'hinted'){
-      (verseRefs || []).forEach(function(ref){
-        if(!verseUsedToday('mainframe', ref)){ pts += 2; eligible.push(ref); }
+    if(level === 5 && selMode !== 'custom'){
+      // Per-verse: 0.05 per blank, only if verse is perfect AND unhinted, once per verse per day
+      (perfectVerses || []).forEach(function(ref){
+        if(!verseUsedToday('mainframe', ref)){
+          var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
+          pts += blanks * 0.05;
+          markVerseUsed('mainframe', ref);
+        }
       });
-      eligible.forEach(function(ref){ markVerseUsed('mainframe', ref); });
     }
     var dailySoFar = getDailyPoints('mainframe');
     pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
+    pts = Math.round(pts * 100) / 100;
     if(pts > 0) addDailyPoints('mainframe', pts);
     queueScore({
       player: getPlayer(), device: getDevice(),
@@ -7499,7 +7516,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -8459,26 +8476,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -15449,7 +15476,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -16408,26 +16435,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -24553,7 +24590,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -25512,26 +25549,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -31688,7 +31735,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -32647,26 +32694,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -39225,7 +39282,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -39789,26 +39846,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -46148,7 +46215,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -46712,26 +46779,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -52699,7 +52776,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -53263,26 +53340,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
@@ -59826,7 +59913,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -60390,26 +60477,36 @@ function App({ onScore }){
   }
 
   function check(){
-    let c=0, tot=0, ptsEarned=0;
+    let c=0, tot=0;
+    // Per-verse tracking for points: which verses are perfect AND unhinted
+    const perfectVerses=[]; // refs of verses eligible for points
+    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
     selVerses.forEach(verse=>{
-      tot++;
+      const ref=verse.ch+'-'+verse.v;
+      let verseBlanks=0, verseCorrect=0, verseHinted=false;
+      tot++; verseBlanks++;
       const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk = norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; if(!hinted[vnKey]) ptsEarned+=0.5; }
-      const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${verse.ch}-${verse.v}`) : null;
-      const uniquePrefix = VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`] ?? 5;
-      buildSegs(verse.t, level+1, {...segOpts, seed: verseSeed, uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++;
+      const vnOk=norm(ans[vnKey])===String(verse.v);
+      if(vnOk){ c++; verseCorrect++; }
+      if(hinted[vnKey]) verseHinted=true;
+      const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
+      const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
+      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
+        tot++; verseBlanks++;
         const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; if(!hinted[k]) ptsEarned+=0.5; }
+        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+        if(hinted[k]) verseHinted=true;
       });
+      // Verse earns points only if all correct AND no hints
+      if(verseCorrect===verseBlanks && !verseHinted){
+        perfectVerses.push(ref);
+        verseBlankCounts[ref]=verseBlanks;
+      }
     });
     setScore({c,tot}); setChk(true);
-    // Log score — hints disqualify a perfect run
+    // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      const refs=selVerses.map(v=>v.ch+'-'+v.v);
-      const anyHinted=Object.keys(hinted).length>0;
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, refs, customVerses?'custom':(anyHinted?'hinted':'range'));
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
     }
   }
 
