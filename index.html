@@ -6856,7 +6856,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -7127,7 +7127,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -7499,7 +7499,7 @@ function SectionLocatorPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Nav */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
@@ -14869,7 +14869,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -15140,7 +15140,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -23973,7 +23973,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -24244,7 +24244,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -31108,7 +31108,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -31379,7 +31379,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -38522,7 +38522,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -38793,7 +38793,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -45445,7 +45445,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -45716,7 +45716,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -52103,7 +52103,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -52374,7 +52374,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -59123,7 +59123,7 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', history.filter(h=>h.correct).length, history.length, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
     }
   },[phase]);
 
@@ -59394,7 +59394,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Odd One Out',history.filter(h=>h.correct).length,history.length,selChs.size);}clearTimer();setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -61358,7 +61358,7 @@ function wardifyStartTracker(){
 
     sendPayload(payload);
 
-    // Send any queued score events
+    // Send any queued score events — use sendBeacon for tab-close reliability
     try {
       var SCORE_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
       var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
@@ -61368,8 +61368,16 @@ function wardifyStartTracker(){
           var params = Object.keys(scorePayload).map(function(k){
             return encodeURIComponent(k)+'='+encodeURIComponent(scorePayload[k]);
           }).join('&');
-          var img = new Image();
-          img.src = SCORE_ENDPOINT + '?type=score&' + params;
+          var url = SCORE_ENDPOINT + '?type=score&' + params;
+          // Try sendBeacon first (most reliable on tab close)
+          var sent = false;
+          if(navigator.sendBeacon){
+            try { sent = navigator.sendBeacon(url); } catch(e){}
+          }
+          if(!sent){
+            var img = new Image();
+            img.src = url;
+          }
         });
       }
     } catch(e) {}
