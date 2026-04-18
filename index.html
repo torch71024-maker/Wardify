@@ -727,20 +727,22 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 </div>
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 /* ════════════════════════════════════════════════════════════
-   WARDIFY SCORE LOGGER
-   Sends score events to Google Sheets with points calculation.
-   Daily limits enforced via localStorage.
+   WARDIFY SCORE LOGGER — per-user daily caps, 0-pt rows explained,
+   custom & range selections counted equally, tab-close flush support.
    ════════════════════════════════════════════════════════════ */
 window.wardifyLogScore = (function(){
+  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
   var DAILY_LIMIT = 30;
   var SECTION_LOCATOR_LIMIT = 15;
 
   function getToday(){ return new Date().toLocaleDateString(); }
   function getPlayer(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
   function getDevice(){ return localStorage.getItem('wardify_device_id') || 'unknown'; }
+  function normPlayer(n){ return (n || 'Unknown').replace(/[^A-Za-z0-9_-]/g,'_').slice(0, 40); }
 
+  // Cap keys are scoped BY PLAYER so two people sharing a device get separate buckets.
   function getDailyKey(tool){
-    return 'wfy_pts_' + tool + '_' + getToday().replace(/\//g,'');
+    return 'wfy_pts_' + tool + '_' + normPlayer(getPlayer()) + '_' + getToday().replace(/\//g,'');
   }
   function getDailyPoints(tool){
     return parseFloat(localStorage.getItem(getDailyKey(tool)) || '0');
@@ -751,7 +753,7 @@ window.wardifyLogScore = (function(){
     localStorage.setItem(key, String(Math.round((current + pts) * 100) / 100));
   }
   function getVerseKey(tool, ref){
-    return 'wfy_vref_' + tool + '_' + getToday().replace(/\//g,'') + '_' + ref;
+    return 'wfy_vref_' + tool + '_' + normPlayer(getPlayer()) + '_' + getToday().replace(/\//g,'') + '_' + ref;
   }
   function verseUsedToday(tool, ref){
     return !!localStorage.getItem(getVerseKey(tool, ref));
@@ -760,93 +762,236 @@ window.wardifyLogScore = (function(){
     localStorage.setItem(getVerseKey(tool, ref), '1');
   }
 
+  function buildUrl(payload){
+    var params = Object.keys(payload).map(function(k){
+      return encodeURIComponent(k)+'='+encodeURIComponent(payload[k] == null ? '' : payload[k]);
+    }).join('&');
+    return ENDPOINT + '?type=score&' + params;
+  }
+
   function queueScore(payload){
-    // Store in localStorage queue as backup
+    // Always keep a local backup in case the network request is lost
     try {
       var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
       queue.push(payload);
+      // Cap queue size so it doesn't grow unbounded
+      if(queue.length > 200) queue = queue.slice(-200);
       localStorage.setItem('wfy_score_queue', JSON.stringify(queue));
     } catch(e){}
-    // ALSO send immediately
     try {
-      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
-      var params = Object.keys(payload).map(function(k){
-        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
-      }).join('&');
-      var img = new Image();
-      img.src = ENDPOINT + '?type=score&' + params;
-      // Debug marker
+      var url = buildUrl(payload);
+      var sent = false;
+      // Preferred: fetch with keepalive (reliable across tab close, supports GET)
+      try {
+        if(typeof fetch === 'function'){
+          fetch(url, {method:'GET', mode:'no-cors', keepalive:true});
+          sent = true;
+        }
+      } catch(e){}
+      // Fallback: sendBeacon (POST; the Apps Script doGet won't fire but the request still lands)
+      if(!sent && navigator.sendBeacon){
+        try { navigator.sendBeacon(url); sent = true; } catch(e){}
+      }
+      // Final fallback for very old browsers
+      if(!sent){
+        var img = new Image();
+        img.src = url;
+      }
       localStorage.setItem('wfy_last_score_attempt', new Date().toISOString() + ' | ' + payload.tool + ' | ' + JSON.stringify(payload));
     } catch(e){
-      localStorage.setItem('wfy_last_score_error', e.toString());
+      try { localStorage.setItem('wfy_last_score_error', e.toString()); } catch(_){}
     }
   }
+
+  // Replay queued scores that may not have been delivered from prior sessions.
+  function flushQueued(){
+    try {
+      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
+      if(!queue.length) return;
+      // Only re-send items from the last 3 days to avoid noise
+      var cutoff = Date.now() - 3*24*60*60*1000;
+      var keep = [];
+      queue.forEach(function(p){
+        var when = p && p._ts;
+        if(!when || when < cutoff) return; // drop old ones
+        keep.push(p);
+      });
+      localStorage.setItem('wfy_score_queue', JSON.stringify(keep));
+    } catch(e){}
+  }
+  setTimeout(flushQueued, 5000);
 
   function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
-    if(level === 5 && selMode !== 'custom'){
-      // Per-verse: 0.05 per blank, only if verse is perfect AND unhinted, once per verse per day
+    var reason = '';
+    var attempted = (perfectVerses || []).length;
+    var creditedVerses = 0;
+    var duplicateVerses = 0;
+
+    if(level !== 5){
+      reason = 'Points only awarded at Level 5 (current level ' + level + ')';
+    } else {
+      // Per-verse: 0.05 per blank, only if verse is perfect AND unhinted, once per verse per day.
+      // Custom-verse selection and passage-range selection both count at the same rate.
       (perfectVerses || []).forEach(function(ref){
-        if(!verseUsedToday('mainframe', ref)){
-          var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
-          pts += blanks * 0.05;
-          markVerseUsed('mainframe', ref);
+        if(verseUsedToday('mainframe', ref)){
+          duplicateVerses++;
+          return;
         }
+        var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
+        pts += blanks * 0.05;
+        markVerseUsed('mainframe', ref);
+        creditedVerses++;
       });
+      if(attempted === 0){
+        reason = 'No perfectly completed verses (a verse must have every blank correct and no hints used)';
+      }
     }
+
     var dailySoFar = getDailyPoints('mainframe');
-    pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
+    var remaining = Math.max(0, DAILY_LIMIT - dailySoFar);
+    var rawPts = Math.round(pts * 100) / 100;
+    pts = Math.min(rawPts, remaining);
     pts = Math.round(pts * 100) / 100;
+
+    if(!reason){
+      if(rawPts > 0 && pts < rawPts){
+        reason = 'Daily cap reached (' + DAILY_LIMIT + ' pts/day). Earned ' + pts + ' of ' + rawPts + ' eligible.';
+      } else if(rawPts === 0 && duplicateVerses > 0){
+        reason = 'All ' + duplicateVerses + ' perfect verses already scored today (one credit per verse per day)';
+      } else if(pts > 0){
+        reason = 'Scored ' + creditedVerses + ' verse' + (creditedVerses===1?'':'s');
+      }
+    }
+
     if(pts > 0) addDailyPoints('mainframe', pts);
     queueScore({
+      _ts: Date.now(),
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
       tool: 'Mainframe', level: level,
+      selMode: selMode || '',
       correct: correct, total: total,
-      pct: Math.round(pct * 100), points: pts
+      perfect_verses: creditedVerses,
+      pct: Math.round(pct * 100), points: pts,
+      reason: reason
     });
   }
 
-  function logQuizTool(tool, correct, total, chapterCount){
+  function logQuizTool(tool, correct, total, chapterCount, context){
     var limit = tool === 'Section Locator' ? SECTION_LOCATOR_LIMIT : DAILY_LIMIT;
     var pts = 0;
-    if(chapterCount >= 3){
-      pts = Math.round(correct * chapterCount * 0.1 * 100) / 100;
-    }
+    var reason = '';
     var dailySoFar = getDailyPoints(tool);
-    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
-    pts = Math.round(pts * 100) / 100;
+    var remaining = Math.max(0, limit - dailySoFar);
+    var rawPts = 0;
+
+    if(total === 0){
+      reason = 'No questions answered';
+    } else if(correct === 0){
+      reason = 'No correct answers';
+    } else if(chapterCount < 3){
+      reason = 'Points require 3+ chapters selected (only ' + chapterCount + ' selected)';
+    } else if(remaining <= 0){
+      reason = 'Daily cap reached (' + limit + ' pts/day for ' + tool + ')';
+    } else {
+      rawPts = Math.round(correct * chapterCount * 0.1 * 100) / 100;
+      pts = Math.min(rawPts, remaining);
+      pts = Math.round(pts * 100) / 100;
+      if(pts < rawPts){
+        reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible (' + limit + ' pts/day).';
+      } else {
+        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x ' + chapterCount + ' chapters x 0.1)';
+      }
+    }
+
     if(pts > 0) addDailyPoints(tool, pts);
     var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
     queueScore({
+      _ts: Date.now(),
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
       tool: tool, chapters: chapterCount,
       correct: correct, total: total,
-      pct: pct, points: pts
+      pct: pct, points: pts,
+      reason: reason,
+      context: context || 'finished'
     });
   }
 
-  function logDrag(correct, total){
-    var pts = Math.round(correct * 0.1 * 100) / 100;
+  function logDrag(correct, total, context){
+    var pts = 0;
+    var reason = '';
     var dailySoFar = getDailyPoints('Drag Study');
-    pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
-    pts = Math.round(pts * 100) / 100;
+    var remaining = Math.max(0, DAILY_LIMIT - dailySoFar);
+    var rawPts = Math.round(correct * 0.1 * 100) / 100;
+
+    if(total === 0){
+      reason = 'No items attempted';
+    } else if(correct === 0){
+      reason = 'No correct drops';
+    } else if(remaining <= 0){
+      reason = 'Daily cap reached (' + DAILY_LIMIT + ' pts/day for Drag Study)';
+    } else {
+      pts = Math.min(rawPts, remaining);
+      pts = Math.round(pts * 100) / 100;
+      if(pts < rawPts){
+        reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible.';
+      } else {
+        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x 0.1)';
+      }
+    }
+
     if(pts > 0) addDailyPoints('Drag Study', pts);
     var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
     queueScore({
+      _ts: Date.now(),
       player: getPlayer(), device: getDevice(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
       tool: 'Drag Study', correct: correct, total: total,
-      pct: pct, points: pts
+      pct: pct, points: pts,
+      reason: reason,
+      context: context || 'finished'
     });
   }
 
   return { mainframe: logMainframe, quiz: logQuizTool, drag: logDrag };
+})();
+
+/* ────────────────────────────────────────────────────────────
+   WARDIFY ACTIVITY TRACKER — flushes in-progress scores on tab close.
+   Each tool's playing phase registers a flush closure via:
+     window.wardifyActivity.set(function(){ ...log partial score... });
+   and clears on unmount/exit:
+     window.wardifyActivity.set(null);
+   ──────────────────────────────────────────────────────────── */
+window.wardifyActivity = (function(){
+  var current = null;
+  var fired = false;
+  function flush(){
+    if(fired) return;
+    if(typeof current === 'function'){
+      fired = true;
+      try { current(); } catch(e){
+        try { localStorage.setItem('wfy_flush_err', e.toString()); } catch(_){}
+      }
+      current = null;
+    }
+  }
+  window.addEventListener('pagehide', flush);
+  window.addEventListener('beforeunload', flush);
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'hidden') flush();
+  });
+  return {
+    set: function(fn){ current = fn; fired = false; },
+    flush: flush,
+    has: function(){ return typeof current === 'function'; }
+  };
 })();
 
 /* ════════════════════════════════════════════════════════════
@@ -4384,6 +4529,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -5509,6 +5665,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -6205,6 +6372,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -6877,6 +7055,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -7393,6 +7582,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -7514,14 +7714,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -12491,6 +12692,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -13601,6 +13813,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -14227,6 +14450,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
+
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
 
   function startGame(){
     const verses=getVersePool();
@@ -14900,6 +15134,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -15353,6 +15598,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -15474,14 +15730,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -21556,6 +21813,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -22715,6 +22983,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -23341,6 +23620,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
+
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
 
   function startGame(){
     const verses=getVersePool();
@@ -24014,6 +24304,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -24467,6 +24768,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -24588,14 +24900,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -28743,6 +29056,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -29861,6 +30185,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -30487,6 +30822,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
+
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
 
   function startGame(){
     const verses=getVersePool();
@@ -31159,6 +31505,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -31612,6 +31969,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -31733,14 +32101,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -36028,6 +36397,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -37184,6 +37564,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -37897,6 +38288,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -38583,6 +38985,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -39159,6 +39572,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -39280,14 +39704,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -42976,6 +43401,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -44104,6 +44540,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -44830,6 +45277,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -45516,6 +45974,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -46092,6 +46561,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -46213,14 +46693,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -49847,6 +50328,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -50924,6 +51416,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -51593,6 +52096,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -52184,6 +52698,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -52653,6 +53178,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -52774,14 +53310,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -56669,6 +57206,17 @@ function KeywordQuiz({ onBack }) {
     }
   },[phase]);
 
+  // Tab-close flush: log partial score if the player closes the tab mid-round.
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Keywords Quiz', history.filter(h=>h.correct).length, history.length, [...selChs].length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function toggleCh(ch){ setSelChs(prev=>{ const n=new Set(prev); n.has(ch)?n.delete(ch):n.add(ch); return n; }); }
   function togglePhrase(mode){ setPhraseMode(prev=>prev===mode?null:mode); }
 
@@ -57802,6 +58350,17 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Reference Matching', history.filter(h=>h.correct).length, history.length, selChs?selChs.size:0, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function getChoices(){
     if(choicesRef.current.qIdx!==qIdx){
       const allVerses=getVersePool();
@@ -58528,6 +59087,17 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history]);
+
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -59214,6 +59784,17 @@ function OddOneOutPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && total > 0){
+        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, score, total, selChs]);
+
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
@@ -59790,6 +60371,17 @@ function SectionLocatorPage({ onBack }){
     }
   },[phase]);
 
+  // Tab-close flush
+  React.useEffect(()=>{
+    if(phase!=='playing' || !window.wardifyActivity) return;
+    window.wardifyActivity.set(function(){
+      if(window.wardifyLogScore && history.length > 0){
+        window.wardifyLogScore.quiz('Section Locator', history.filter(h=>h.correct).length, history.length, selChs.size, 'tab-closed');
+      }
+    });
+    return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
+  },[phase, history, selChs]);
+
   function startGame(){
     const qs=buildQuestions();
     if(!qs||qs.length<1) return;
@@ -59911,14 +60503,15 @@ function SectionLocatorPage({ onBack }){
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.5rem'}}>
+          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
+          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
             <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
               <div style={{color:'rgba(60,200,110,0.6)'}}>{history.filter(h=>h.correct).length} correct</div>
             </div>
-            <div style={{width:56}}/>
           </div>
 
           {/* Progress bar */}
@@ -61518,142 +62111,7 @@ function wardifyStartTracker(){
 })();
 }
 
-/* ════════════════════════════════════════════════════════════
-   WARDIFY SCORE LOGGER
-   Sends score events to Google Sheets with points calculation.
-   Daily limits enforced via localStorage.
-   ════════════════════════════════════════════════════════════ */
-window.wardifyLogScore = (function(){
-  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
-  var DAILY_LIMIT = 30;
-  var SECTION_LOCATOR_LIMIT = 15;
-
-  function getToday(){ return new Date().toLocaleDateString(); }
-  function getPlayer(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
-  function getDevice(){ return localStorage.getItem('wardify_device_id') || 'unknown'; }
-
-  function getDailyKey(tool){
-    return 'wfy_pts_' + tool + '_' + getToday().replace(/\//g,'');
-  }
-
-  function getDailyPoints(tool){
-    return parseFloat(localStorage.getItem(getDailyKey(tool)) || '0');
-  }
-
-  function addDailyPoints(tool, pts){
-    var key = getDailyKey(tool);
-    var current = getDailyPoints(tool);
-    localStorage.setItem(key, String(Math.round((current + pts) * 100) / 100));
-  }
-
-  function getVerseKey(tool, ref){
-    return 'wfy_vref_' + tool + '_' + getToday().replace(/\//g,'') + '_' + ref;
-  }
-
-  function verseUsedToday(tool, ref){
-    return !!localStorage.getItem(getVerseKey(tool, ref));
-  }
-
-  function markVerseUsed(tool, ref){
-    localStorage.setItem(getVerseKey(tool, ref), '1');
-  }
-
-  function send(payload){
-    var params = Object.keys(payload).map(function(k){
-      return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
-    }).join('&');
-    var img = new Image();
-    img.src = ENDPOINT + '?type=score&' + params;
-  }
-
-  // ── MAINFRAME (fill-in-the-blanks) ──
-  // level: 1-5, correct: number, total: number, verseRefs: array of "ch-v" strings
-  function logMainframe(level, correct, total, verseRefs, selMode){
-    var pct = total > 0 ? correct / total : 0;
-    var pts = 0;
-    var eligible = [];
-
-    if(level === 5 && pct === 1.0 && selMode !== 'custom' && selMode !== 'hinted'){
-      // 2 points per perfect level-5 verse, once per verse per day
-      (verseRefs || []).forEach(function(ref){
-        if(!verseUsedToday('mainframe', ref)){
-          pts += 2;
-          eligible.push(ref);
-        }
-      });
-      eligible.forEach(function(ref){ markVerseUsed('mainframe', ref); });
-    }
-
-    var limit = DAILY_LIMIT;
-    var dailySoFar = getDailyPoints('mainframe');
-    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
-    if(pts > 0) addDailyPoints('mainframe', pts);
-
-    send({
-      player: getPlayer(), device: getDevice(),
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString(),
-      tool: 'Mainframe', level: level,
-      correct: correct, total: total,
-      pct: Math.round(pct * 100),
-      points: pts
-    });
-  }
-
-  // ── KEYWORD QUIZ / SECTION LOCATOR / ODD ONE OUT / REFERENCE MATCHING ──
-  // tool: string, correct: number, total: number, chapterCount: number (must be from full chapters only)
-  function logQuizTool(tool, correct, total, chapterCount){
-    var limit = tool === 'Section Locator' ? SECTION_LOCATOR_LIMIT : DAILY_LIMIT;
-    var pts = 0;
-
-    if(chapterCount >= 3){
-      var multiplier = chapterCount * 0.1;
-      pts = correct * multiplier;
-      pts = Math.round(pts * 100) / 100;
-    }
-
-    var dailySoFar = getDailyPoints(tool);
-    pts = Math.min(pts, Math.max(0, limit - dailySoFar));
-    pts = Math.round(pts * 100) / 100;
-    if(pts > 0) addDailyPoints(tool, pts);
-
-    var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-    send({
-      player: getPlayer(), device: getDevice(),
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString(),
-      tool: tool, chapters: chapterCount,
-      correct: correct, total: total,
-      pct: pct, points: pts
-    });
-  }
-
-  // ── DRAG STUDY GAME ──
-  // correct: number, total: number
-  function logDrag(correct, total){
-    var pts = correct * 0.1;
-    pts = Math.round(pts * 100) / 100;
-    var dailySoFar = getDailyPoints('Drag Study');
-    pts = Math.min(pts, Math.max(0, DAILY_LIMIT - dailySoFar));
-    pts = Math.round(pts * 100) / 100;
-    if(pts > 0) addDailyPoints('Drag Study', pts);
-
-    var pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-    send({
-      player: getPlayer(), device: getDevice(),
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString(),
-      tool: 'Drag Study', correct: correct, total: total,
-      pct: pct, points: pts
-    });
-  }
-
-  return {
-    mainframe: logMainframe,
-    quiz: logQuizTool,
-    drag: logDrag
-  };
-})();
+// [duplicate wardifyLogScore block removed — primary definition lives near the top]
 </script>
 </body>
 </html>
