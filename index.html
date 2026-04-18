@@ -7713,11 +7713,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -15729,11 +15729,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -24899,11 +24899,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -32100,11 +32100,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -39703,11 +39703,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -46692,11 +46692,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -53309,11 +53309,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
@@ -60502,11 +60502,11 @@ function SectionLocatorPage({ onBack }){
     return (
       <div style={{position:'relative',minHeight:'100vh'}}>
         <canvas ref={canvasRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
+        {/* Exit button — outside content wrapper, maximum z-index, explicit pointer events */}
+        <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:99999,pointerEvents:'auto'}}>
+          <button className="kq-nav-btn" style={{pointerEvents:'auto',cursor:'pointer'}} onClick={()=>{try{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.quiz('Section Locator',history.filter(h=>h.correct).length,history.length,selChs.size);}}catch(e){console.warn('SL exit log failed',e);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
+        </div>
         <div style={{position:'relative',zIndex:3,maxWidth:600,margin:'0 auto',padding:'1rem 1rem 4rem',fontFamily:"'Crimson Pro',serif"}}>
-          {/* Nav — fixed Exit button (always clickable regardless of scroll) */}
-          <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Section Locator',score,total,selChs.size);}setQuestions([]);setQIdx(0);setChosen(null);setHistory([]);setPhase('setup');}}>✕ Exit</button>
-          </div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',paddingTop:'2.5rem',paddingBottom:'.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.62rem',color:'rgba(80,190,130,0.5)',textAlign:'center'}}>
               {prog} / {total}
