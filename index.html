@@ -5845,6 +5845,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -6040,19 +6042,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -6063,6 +6070,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -6079,28 +6088,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -6249,7 +6251,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -6346,7 +6348,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -13478,6 +13480,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -13673,19 +13677,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -13696,6 +13705,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -13712,28 +13723,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -13882,7 +13886,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -13979,7 +13983,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -22076,6 +22080,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -22271,19 +22277,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -22294,6 +22305,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -22310,28 +22323,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -22480,7 +22486,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -22577,7 +22583,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>Ch.{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -28875,6 +28881,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -29070,19 +29078,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -29093,6 +29106,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -29109,28 +29124,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -29279,7 +29287,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -29376,7 +29384,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -35905,6 +35913,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -36100,19 +36110,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -36123,6 +36138,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -36139,28 +36156,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -36309,7 +36319,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -36406,7 +36416,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -42454,6 +42464,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -42649,19 +42661,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -42672,6 +42689,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -42688,28 +42707,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -42858,7 +42870,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -42955,7 +42967,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -48841,6 +48853,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -49036,19 +49050,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -49059,6 +49078,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -49075,28 +49096,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -49245,7 +49259,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -49342,7 +49356,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
@@ -55417,6 +55431,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [basketModal,setBasketModal]=React.useState(null);
   const [checked,setChecked]=React.useState(false);
   const [score,setScore]=React.useState({correct:0,total:0});
+  const _dsScoreRef=React.useRef({c:0,t:0});
+  const _dsLoggedRef=React.useRef({c:-1,t:-1});
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -55612,19 +55628,24 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
+      const {c,t}=_dsScoreRef.current;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t);
+      _dsLoggedRef.current={c,t};
     }
   },[phase]);
-  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
+  // Tab-close flush — uses _dsScoreRef (never stale), skips if already logged.
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && score && score.total > 0){
-        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
-      }
+      const {c,t}=_dsScoreRef.current;
+      if(!window.wardifyLogScore || t===0) return;
+      if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
+      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score]);
+  },[phase]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -55635,6 +55656,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     usedRef.current=new Set();
     setActiveChs(chs);
     setScore({correct:0,total:0});
+    _dsScoreRef.current={c:0,t:0};
+    _dsLoggedRef.current={c:-1,t:-1};
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -55651,28 +55674,21 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     const newCorrect = score.correct + correct;
     const newTotal = score.total + roundItems.length;
     setScore({correct:newCorrect, total:newTotal});
+    _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
-    // Log the score the moment Check is pressed, so closing the tab mid-round
-    // still records the points. Server-side dedupe handles any later duplicate
-    // when Next/Exit is pressed.
     if(window.wardifyLogScore){
       window.wardifyLogScore.drag(newCorrect, newTotal);
+      _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
   function nextRound(){
     const pool=poolRef.current;
     const rem=pool.filter(i=>!usedRef.current.has(i.id));
     if(rem.length<activeChs.length){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     const next=buildRound(pool,usedRef.current,activeChs);
     if(next.length===0){
-      if(window.wardifyLogScore){
-        window.wardifyLogScore.drag(score.correct+correct, score.total+roundItems.length);
-      }
       setPhase('results');return;
     }
     next.forEach(i=>usedRef.current.add(i.id));
@@ -55821,7 +55837,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{if(window.wardifyLogScore&&score.total>0){window.wardifyLogScore.drag(score.correct,score.total);}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -55918,7 +55934,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
                     onMouseEnter={e=>e.currentTarget.style.transform='translateY(-4px) scale(1.07)'}
                     onMouseLeave={e=>e.currentTarget.style.transform=''}>
                     <div style={{fontFamily:'Cinzel,serif',fontSize:'.54rem',letterSpacing:'.04em',
-                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{ch}</div>
+                      color:bk.lbl,marginBottom:'.04rem',fontWeight:700,lineHeight:1}}>{chLabel(ch)}</div>
                     <svg width="100%" viewBox="0 0 48 42" overflow="visible"
                       style={{display:'block',animation:`bsk-sway ${2.5+ci*0.31}s ease-in-out infinite`,transformOrigin:'50% 88%',
                         filter:`drop-shadow(0 3px 7px ${bk.shad})`}}>
