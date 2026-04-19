@@ -58130,7 +58130,10 @@ function wardifyStartTracker(){
   var INACTIVITY_MS = 30 * 1000; // 30 seconds
   var sessionStart = Date.now();
   var activeMs = 0;          // time spent actively interacting
-  var wallClockMs = 0;       // time spent with the tab visible (wall-clock)
+  var wallClockMs = 0;       // confirmed wall-clock time (committed after warmup)
+  var pendingMs = 0;         // unconfirmed time within the current run's warmup window
+  var runConfirmed = false;  // true once the current run has crossed WARMUP_MS
+  var WARMUP_MS = 10 * 1000; // time must exceed this in a run before any of it counts
   var lastActive = Date.now();
   var lastWall = Date.now();
   var isActive = true;
@@ -58155,12 +58158,23 @@ function wardifyStartTracker(){
       lastActive = now;
     }
     // Wall-clock counts whenever the tab is visible AND the user hasn't been
-    // idle for more than INACTIVITY_MS. This matches the user expectation:
-    // time keeps running during reading/thinking, but stops after 30s of no
-    // interaction or when the tab is hidden.
+    // idle for more than INACTIVITY_MS, BUT only after the current run clears
+    // the 10-second warmup. Before that, time is held in `pendingMs` and
+    // discarded if the run ends early.
     if(isVisible && isActive){
-      wallClockMs += now - lastWall;
+      var delta = now - lastWall;
       lastWall = now;
+      if(runConfirmed){
+        wallClockMs += delta;
+      } else {
+        pendingMs += delta;
+        if(pendingMs >= WARMUP_MS){
+          // Crossed the warmup threshold — commit everything retroactively.
+          wallClockMs += pendingMs;
+          pendingMs = 0;
+          runConfirmed = true;
+        }
+      }
     }
   }
   // Tick every second to accumulate active time
@@ -58169,14 +58183,22 @@ function wardifyStartTracker(){
     if(isActive){
       tick();
       isActive = false;
+      // Unconfirmed time in this run is forfeit.
+      pendingMs = 0;
+      runConfirmed = false;
     }
   }
   function resumeActive(){
     if(!isActive){
       var now = Date.now();
       lastActive = now;
-      lastWall = now;    // reset wall baseline too — idle gap doesn't count
+      lastWall = now;    // reset wall baseline — idle gap doesn't count
       isActive = true;
+      // Each resume begins a fresh warmup run. Any pendingMs from a prior
+      // unconfirmed run is discarded; if the prior run was already confirmed
+      // (runConfirmed === true), its wallClockMs stays committed.
+      pendingMs = 0;
+      runConfirmed = false;
     }
     resetInactivity();
   }
@@ -58184,12 +58206,17 @@ function wardifyStartTracker(){
     if(isVisible){
       tick();
       isVisible = false;
+      pendingMs = 0;
+      runConfirmed = false;
     }
   }
   function resumeVisible(){
     if(!isVisible){
       lastWall = Date.now();
       isVisible = true;
+      // Returning from a hidden tab also begins a fresh warmup run.
+      pendingMs = 0;
+      runConfirmed = false;
     }
   }
   function resetInactivity(){
@@ -58236,12 +58263,15 @@ function wardifyStartTracker(){
   }
   function sendSession(reason){
     if(sent) return;
-    // Always log a session row if we have a player name, even if active time is 0.
-    // This ensures every player gets a personal tab in the spreadsheet and appears
-    // in "All Sessions" — previously, short sessions silently dropped and players
-    // who played briefly (or only triggered score logs) never showed up.
     var playerName = getPlayerName();
     if(!playerName || playerName === 'Unknown') return;
+    // Ensure tick has run so any just-crossed warmup is committed.
+    tick();
+    // Gate: session row only logs if the user accumulated confirmed wall-clock time.
+    // wallClockMs is only non-zero once a run has crossed the 10-second warmup.
+    // Sessions shorter than 10s are silently dropped. Points are NOT gated by this —
+    // they log independently via wardifyLogScore as rounds finish.
+    if(wallClockMs < 1000) return;
     sent = true;
     clearInterval(tickInterval);
     clearTimeout(inactivityTimer);
