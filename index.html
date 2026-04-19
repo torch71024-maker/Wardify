@@ -731,10 +731,13 @@ window.wardifyLogScore = (function(){
     }).join('&');
     return ENDPOINT + '?type=score&' + params;
   }
-  // Dedupe guard: suppress any payload with the same signature sent recently.
-  // Persisted in localStorage so tab-close → reopen cannot double-send.
-  var DEDUPE_WINDOW_MS = 60000; // 60s — long enough to catch tab-close races,
-                                // short enough that legit re-plays still log.
+  // Dedupe guard: suppress near-instant duplicates of the SAME payload only.
+  // Real double-fires from pagehide+beforeunload+visibilitychange happen within
+  // a few hundred ms. Legitimate repeat rounds (same tool, same score) are
+  // spaced seconds or more apart — don't block those.
+  // Persisted in localStorage so a tab-close → reopen within the window still
+  // catches the stray double-send.
+  var DEDUPE_WINDOW_MS = 5000; // 5s — catches races, allows legit repeat play.
   var DEDUPE_STORAGE_KEY = 'wfy_dedupe_map';
   function loadDedupeMap(){
     try { return JSON.parse(localStorage.getItem(DEDUPE_STORAGE_KEY) || '{}'); }
@@ -785,6 +788,14 @@ window.wardifyLogScore = (function(){
   }
   // One-time cleanup: drain any leftover scores from pre-fix installs to avoid re-sending them.
   try { localStorage.removeItem('wfy_score_queue'); } catch(e){}
+  // One-time cleanup: clear the old 60s dedupe map that may be blocking legitimate scores.
+  // Runs once per browser — the marker below prevents it from running repeatedly.
+  try {
+    if(!localStorage.getItem('wfy_dedupe_reset_v2')){
+      localStorage.removeItem('wfy_dedupe_map');
+      localStorage.setItem('wfy_dedupe_reset_v2', '1');
+    }
+  } catch(e){}
   function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
@@ -6032,16 +6043,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -6065,8 +6076,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -6604,6 +6623,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -6682,24 +6702,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -6722,7 +6743,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -6742,6 +6764,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -6760,6 +6784,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -6774,10 +6799,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -6944,7 +6971,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -13649,16 +13676,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -13682,8 +13709,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -14221,6 +14256,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -14299,24 +14335,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -14339,7 +14376,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -14359,6 +14397,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -14377,6 +14417,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -14391,10 +14432,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -14561,7 +14604,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -22231,16 +22274,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -22264,8 +22307,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -22803,6 +22854,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -22881,24 +22933,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -22921,7 +22974,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -22941,6 +22995,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -22959,6 +23015,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -22973,10 +23030,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -23143,7 +23202,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -29014,16 +29073,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -29047,8 +29106,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -29585,6 +29652,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -29663,24 +29731,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -29703,7 +29772,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -29723,6 +29793,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -29741,6 +29813,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -29755,10 +29828,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -29925,7 +30000,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -36028,16 +36103,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -36061,8 +36136,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -36608,6 +36691,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -36686,24 +36770,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -36726,7 +36811,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -36746,6 +36832,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -36764,6 +36852,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -36778,10 +36867,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -36948,7 +37039,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -42561,16 +42652,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -42594,8 +42685,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -43141,6 +43240,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -43219,24 +43319,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -43259,7 +43360,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -43279,6 +43381,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -43297,6 +43401,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -43311,10 +43416,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -43481,7 +43588,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -48932,16 +49039,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -48965,8 +49072,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -49430,6 +49545,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -49508,24 +49624,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -49548,7 +49665,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -49568,6 +49686,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -49586,6 +49706,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -49600,10 +49721,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -49770,7 +49893,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -55492,16 +55615,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       window.wardifyLogScore.drag( history.filter(h=>h.correct).length, history.length);
     }
   },[phase]);
-  // Tab-close flush
+  // Tab-close flush (Drag Study uses `score` {correct,total}, not `history`)
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && history.length > 0){
-        window.wardifyLogScore.drag(history.filter(h=>h.correct).length, history.length, 'tab-closed');
+      if(window.wardifyLogScore && score && score.total > 0){
+        window.wardifyLogScore.drag(score.correct, score.total, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, history]);
+  },[phase, score]);
   function startGame(){
     const verses=getVersePool();
     const chs=[...new Set(verses.map(v=>v.ch))].sort((a,b)=>a-b);
@@ -55525,8 +55648,16 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   function checkRound(){
     if(!roundItems.every(i=>placed[i.id]!==undefined))return;
     const correct=roundItems.filter(i=>placed[i.id]===i.ch).length;
-    setScore(s=>({correct:s.correct+correct,total:s.total+roundItems.length}));
+    const newCorrect = score.correct + correct;
+    const newTotal = score.total + roundItems.length;
+    setScore({correct:newCorrect, total:newTotal});
     setChecked(true);
+    // Log the score the moment Check is pressed, so closing the tab mid-round
+    // still records the points. Server-side dedupe handles any later duplicate
+    // when Next/Exit is pressed.
+    if(window.wardifyLogScore){
+      window.wardifyLogScore.drag(newCorrect, newTotal);
+    }
   }
   function nextRound(){
     const pool=poolRef.current;
@@ -56072,6 +56203,7 @@ function OddOneOutPage({ onBack }){
   const [hearts,setHearts]=React.useState(3);
   const [score,setScore]=React.useState(0);
   const [total,setTotal]=React.useState(0);
+  const _oooRef=React.useRef({c:0,t:0}); // always-current ref — never stale in closures
   const [deathScreen,setDeathScreen]=React.useState(false);
   const [deathOpacity,setDeathOpacity]=React.useState(0);
   const [victoryScreen,setVictoryScreen]=React.useState(false);
@@ -56150,24 +56282,25 @@ function OddOneOutPage({ onBack }){
   React.useEffect(()=>{
     if(phase!=='results') return;
     if(window.wardifyLogScore){
-      window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
+      window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size);
     }
   },[phase]);
   // Tab-close flush
   React.useEffect(()=>{
     if(phase!=='playing' || !window.wardifyActivity) return;
     window.wardifyActivity.set(function(){
-      if(window.wardifyLogScore && total > 0){
-        window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size, 'tab-closed');
+      if(window.wardifyLogScore && _oooRef.current.t > 0){
+        window.wardifyLogScore.quiz('Odd One Out', _oooRef.current.c, _oooRef.current.t, selChs.size, 'tab-closed');
       }
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
-  },[phase, score, total, selChs]);
+  },[phase]);
   function startGame(){
     const q=buildQuestion(selChs,mode);
     if(!q) return;
     setQuestion(q); setChosen(null); setHearts(3);
     setScore(0); setTotal(0); setFeedbackState(null);
+    _oooRef.current={c:0,t:0}; // reset ref on new game
     setPhase('playing');
     setTimeout(()=>startTimer(),50);
   }
@@ -56190,7 +56323,8 @@ function OddOneOutPage({ onBack }){
     // Check victory
     const goal=parseInt(victoryGoal);
     if(!isNaN(goal)&&goal>0&&newScore>=goal){
-      // Victory!
+      // Victory — log immediately using ref before transitioning to setup.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setVictoryScreen(true);
         let op=0;
@@ -56210,6 +56344,8 @@ function OddOneOutPage({ onBack }){
     const fx=effectRef.current; const pos=fx?.getPos();
     if(fx&&pos) fx.spawnSmoke(pos.x,pos.y,22);
     if(newHearts<=0){
+      // Log immediately using ref before death screen hides the playing phase.
+      if(window.wardifyLogScore) window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);
       setTimeout(()=>{
         setDeathScreen(true);
         let op=0;
@@ -56228,6 +56364,7 @@ function OddOneOutPage({ onBack }){
     // treat as wrong — use a sentinel so UI shows timeout state
     setChosen(-1);
     setTotal(t=>t+1);
+    _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
     const newHearts=hearts-1;
     setHearts(newHearts);
     const oddCh=question?.oddCh;
@@ -56242,10 +56379,12 @@ function OddOneOutPage({ onBack }){
     if(correct){
       const newScore=score+1;
       setScore(newScore);
+      _oooRef.current={c:_oooRef.current.c+1, t:_oooRef.current.t+1};
       resolveCorrect(newScore);
     } else {
       const newHearts=hearts-1;
       setHearts(newHearts);
+      _oooRef.current={c:_oooRef.current.c, t:_oooRef.current.t+1};
       resolveWrong(newHearts, question.oddCh);
     }
   }
@@ -56412,7 +56551,7 @@ function OddOneOutPage({ onBack }){
         <div style={{position:'relative',zIndex:3,maxWidth:640,margin:'0 auto',padding:'.75rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
           {/* Header row */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingBottom:'.45rem'}}>
-            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&total>0){window.wardifyLogScore.quiz('Odd One Out',score,total,selChs.size);}setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" onClick={()=>{if(window.wardifyLogScore&&_oooRef.current.t>0){window.wardifyLogScore.quiz('Odd One Out',_oooRef.current.c,_oooRef.current.t,selChs.size);}setPhase('setup');}}>✕ Exit</button>
             {/* Hearts */}
             <div style={{display:'flex',gap:'.3rem',alignItems:'center'}}>
               {[0,1,2].map(i=>(
@@ -58328,8 +58467,12 @@ function wardifyStartTracker(){
       resumeActive();
     }
   });
-  // Activity events — use capture:true so events inside inputs still register
-  ['mousedown','keydown','keyup','input','touchstart','scroll','click'].forEach(function(ev){
+  // Activity events — use capture:true so events inside inputs still register.
+  // Includes pointer/drag-related events so that dragging items in Drag Study
+  // (which can go 30+ seconds between mousedown and mouseup) counts as activity.
+  ['mousedown','mousemove','mouseup','keydown','keyup','input',
+   'touchstart','touchmove','touchend','pointerdown','pointermove',
+   'scroll','click','dragstart','dragover','drop'].forEach(function(ev){
     document.addEventListener(ev, function(){
       if(!isActive) resumeActive();
       else resetInactivity();
