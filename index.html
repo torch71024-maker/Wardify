@@ -731,30 +731,49 @@ window.wardifyLogScore = (function(){
     }).join('&');
     return ENDPOINT + '?type=score&' + params;
   }
+  // Dedupe guard: suppress any payload with the same signature sent recently.
+  // Persisted in localStorage so tab-close → reopen cannot double-send.
+  var DEDUPE_WINDOW_MS = 60000; // 60s — long enough to catch tab-close races,
+                                // short enough that legit re-plays still log.
+  var DEDUPE_STORAGE_KEY = 'wfy_dedupe_map';
+  function loadDedupeMap(){
+    try { return JSON.parse(localStorage.getItem(DEDUPE_STORAGE_KEY) || '{}'); }
+    catch(e){ return {}; }
+  }
+  function saveDedupeMap(m){
+    try { localStorage.setItem(DEDUPE_STORAGE_KEY, JSON.stringify(m)); } catch(e){}
+  }
   function queueScore(payload){
-    // Always keep a local backup in case the network request is lost
     try {
-      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
-      queue.push(payload);
-      // Cap queue size so it doesn't grow unbounded
-      if(queue.length > 200) queue = queue.slice(-200);
-      localStorage.setItem('wfy_score_queue', JSON.stringify(queue));
-    } catch(e){}
-    try {
+      // Signature uniquely identifies a round outcome.
+      var sig = [payload.tool, payload.level || '', payload.correct, payload.total,
+                 payload.chapters || '', payload.context || '',
+                 payload.perfect_verses || '', payload.selMode || ''].join('|');
+      var now = Date.now();
+      var map = loadDedupeMap();
+      // Purge expired entries
+      Object.keys(map).forEach(function(k){
+        if(now - map[k] > DEDUPE_WINDOW_MS) delete map[k];
+      });
+      if(map[sig] && (now - map[sig]) < DEDUPE_WINDOW_MS){
+        try { localStorage.setItem('wfy_last_dedupe', new Date().toISOString() + ' | ' + sig); } catch(_){}
+        saveDedupeMap(map);
+        return;
+      }
+      map[sig] = now;
+      saveDedupeMap(map);
+
       var url = buildUrl(payload);
       var sent = false;
-      // Preferred: fetch with keepalive (reliable across tab close, supports GET)
       try {
         if(typeof fetch === 'function'){
           fetch(url, {method:'GET', mode:'no-cors', keepalive:true});
           sent = true;
         }
       } catch(e){}
-      // Fallback: sendBeacon (POST; the Apps Script doGet won't fire but the request still lands)
       if(!sent && navigator.sendBeacon){
         try { navigator.sendBeacon(url); sent = true; } catch(e){}
       }
-      // Final fallback for very old browsers
       if(!sent){
         var img = new Image();
         img.src = url;
@@ -764,23 +783,8 @@ window.wardifyLogScore = (function(){
       try { localStorage.setItem('wfy_last_score_error', e.toString()); } catch(_){}
     }
   }
-  // Replay queued scores that may not have been delivered from prior sessions.
-  function flushQueued(){
-    try {
-      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
-      if(!queue.length) return;
-      // Only re-send items from the last 3 days to avoid noise
-      var cutoff = Date.now() - 3*24*60*60*1000;
-      var keep = [];
-      queue.forEach(function(p){
-        var when = p && p._ts;
-        if(!when || when < cutoff) return; // drop old ones
-        keep.push(p);
-      });
-      localStorage.setItem('wfy_score_queue', JSON.stringify(keep));
-    } catch(e){}
-  }
-  setTimeout(flushQueued, 5000);
+  // One-time cleanup: drain any leftover scores from pre-fix installs to avoid re-sending them.
+  try { localStorage.removeItem('wfy_score_queue'); } catch(e){}
   function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
@@ -5351,10 +5355,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -6706,9 +6707,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -7201,12 +7200,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -13038,10 +13034,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -14331,9 +14324,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -14770,12 +14761,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -21628,10 +21616,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -22921,9 +22906,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -23360,12 +23343,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -28419,10 +28399,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -29711,9 +29688,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -30150,12 +30125,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -35368,10 +35340,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -36742,9 +36711,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -37283,12 +37250,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -41896,10 +41860,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -43283,9 +43244,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -43824,12 +43783,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -48326,10 +48282,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -49580,9 +49533,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -50035,12 +49986,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -54843,10 +54791,7 @@ function RefMatchPage({ onBack, initialCustomVerses }) {
     const next=qIdx+1;
     if(next>=pool.length){
       setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Reference Matching', c, pool.length, selChs?selChs.size:0);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQIdx(next); setPicked(null); setTimeLeft(20);
@@ -56230,9 +56175,7 @@ function OddOneOutPage({ onBack }){
     const q=buildQuestion(selChs,mode);
     if(!q){
       setPhase('results');
-      if(window.wardifyLogScore){
-          window.wardifyLogScore.quiz('Odd One Out', score, total, selChs.size);
-        }
+      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -56771,12 +56714,9 @@ function SectionLocatorPage({ onBack }){
       setHistory(h=>[...h,{prompt:q.prompt,answer:q.answer,chosen:choice,correct}]);
       const next=qIdx+1;
       if(next>=questions.length){
-      setPhase('results');
-      if(window.wardifyLogScore){
-          const c=history.filter(h=>h.correct).length;
-          window.wardifyLogScore.quiz('Section Locator', c, questions.length, selChs.size);
-        }
-    }
+        setPhase('results');
+        // Score logged by the results useEffect — do not log here (was causing duplicates).
+      }
       else{ setQIdx(next); setChosen(null); }
     }, correct?700:1100);
   }
@@ -58189,9 +58129,12 @@ function wardifyStartTracker(){
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
   var INACTIVITY_MS = 30 * 1000; // 30 seconds
   var sessionStart = Date.now();
-  var activeMs = 0;
+  var activeMs = 0;          // time spent actively interacting
+  var wallClockMs = 0;       // time spent with the tab visible (wall-clock)
   var lastActive = Date.now();
+  var lastWall = Date.now();
   var isActive = true;
+  var isVisible = !document.hidden;
   var inactivityTimer = null;
   var sent = false;
   function getPlayerName(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
@@ -58206,26 +58149,48 @@ function wardifyStartTracker(){
     return m + 'm ' + (s < 10 ? '0' : '') + s + 's';
   }
   function tick(){
+    var now = Date.now();
     if(isActive){
-      var now = Date.now();
       activeMs += now - lastActive;
       lastActive = now;
+    }
+    // Wall-clock counts whenever the tab is visible AND the user hasn't been
+    // idle for more than INACTIVITY_MS. This matches the user expectation:
+    // time keeps running during reading/thinking, but stops after 30s of no
+    // interaction or when the tab is hidden.
+    if(isVisible && isActive){
+      wallClockMs += now - lastWall;
+      lastWall = now;
     }
   }
   // Tick every second to accumulate active time
   var tickInterval = setInterval(tick, 1000);
   function pauseActive(){
     if(isActive){
-      tick(); // capture any remaining time
+      tick();
       isActive = false;
     }
   }
   function resumeActive(){
     if(!isActive){
-      lastActive = Date.now();
+      var now = Date.now();
+      lastActive = now;
+      lastWall = now;    // reset wall baseline too — idle gap doesn't count
       isActive = true;
     }
     resetInactivity();
+  }
+  function pauseVisible(){
+    if(isVisible){
+      tick();
+      isVisible = false;
+    }
+  }
+  function resumeVisible(){
+    if(!isVisible){
+      lastWall = Date.now();
+      isVisible = true;
+    }
   }
   function resetInactivity(){
     clearTimeout(inactivityTimer);
@@ -58271,50 +58236,39 @@ function wardifyStartTracker(){
   }
   function sendSession(reason){
     if(sent) return;
-    if(activeMs < 1000) return; // don't log sessions under 1 second
+    // Always log a session row if we have a player name, even if active time is 0.
+    // This ensures every player gets a personal tab in the spreadsheet and appears
+    // in "All Sessions" — previously, short sessions silently dropped and players
+    // who played briefly (or only triggered score logs) never showed up.
+    var playerName = getPlayerName();
+    if(!playerName || playerName === 'Unknown') return;
     sent = true;
     clearInterval(tickInterval);
     clearTimeout(inactivityTimer);
+    // Report wall-clock time as the headline duration — matches user expectation
+    // that 'I was on for 30 seconds' means 30 seconds of wall-clock, not 30 seconds
+    // of active mousing/typing. activeMs is kept as an additional metric.
     var payload = {
       player: getPlayerName(),
       device: getDeviceId(),
       book: getCurrentBook(),
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
-      duration: formatDuration(activeMs),
-      duration_ms: activeMs,
+      duration: formatDuration(wallClockMs),
+      duration_ms: wallClockMs,
+      active_ms: activeMs,
       reason: reason
     };
     sendPayload(payload);
-    // Send any queued score events — use sendBeacon for tab-close reliability
-    try {
-      var SCORE_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
-      var queue = JSON.parse(localStorage.getItem('wfy_score_queue') || '[]');
-      if(queue.length > 0){
-        localStorage.removeItem('wfy_score_queue');
-        queue.forEach(function(scorePayload){
-          var params = Object.keys(scorePayload).map(function(k){
-            return encodeURIComponent(k)+'='+encodeURIComponent(scorePayload[k]);
-          }).join('&');
-          var url = SCORE_ENDPOINT + '?type=score&' + params;
-          // Try sendBeacon first (most reliable on tab close)
-          var sent = false;
-          if(navigator.sendBeacon){
-            try { sent = navigator.sendBeacon(url); } catch(e){}
-          }
-          if(!sent){
-            var img = new Image();
-            img.src = url;
-          }
-        });
-      }
-    } catch(e) {}
+    // Score events are sent immediately by wardifyLogScore; no re-flush needed here.
   }
-  // Tab visibility changes
+  // Tab visibility changes — pause both wall-clock and active time
   document.addEventListener('visibilitychange', function(){
     if(document.hidden){
+      pauseVisible();
       pauseActive();
     } else {
+      resumeVisible();
       resumeActive();
     }
   });
