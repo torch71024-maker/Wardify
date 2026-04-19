@@ -58140,6 +58140,33 @@ function wardifyStartTracker(){
   var isVisible = !document.hidden;
   var inactivityTimer = null;
   var sent = false;
+  // Stable per-session ID used for client+server dedup. Stored in localStorage
+  // so a re-initialized tracker (pagehide+beforeunload racing, script reload)
+  // can detect that this exact session already posted.
+  var sessionId = 'wfy-' + sessionStart + '-' + Math.random().toString(36).slice(2,10);
+  function isSessionAlreadySent(){
+    try {
+      var key = 'wfy_sess_sent_' + sessionId;
+      return localStorage.getItem(key) === '1';
+    } catch(e){ return false; }
+  }
+  function markSessionSent(){
+    try {
+      localStorage.setItem('wfy_sess_sent_' + sessionId, '1');
+      // Cleanup: prune sent-markers older than 24h so localStorage doesn't grow.
+      var keysToCheck = [];
+      for(var i=0; i<localStorage.length; i++){
+        var k = localStorage.key(i);
+        if(k && k.indexOf('wfy_sess_sent_') === 0) keysToCheck.push(k);
+      }
+      var cutoff = Date.now() - 24*60*60*1000;
+      keysToCheck.forEach(function(k){
+        var parts = k.split('-');
+        var ts = parseInt(parts[1], 10);
+        if(!isNaN(ts) && ts < cutoff) localStorage.removeItem(k);
+      });
+    } catch(e){}
+  }
   function getPlayerName(){ return localStorage.getItem('wardify_player_name') || 'Unknown'; }
   function getDeviceId(){ return localStorage.getItem('wardify_device_id') || 'unknown'; }
   function getCurrentBook(){
@@ -58263,22 +58290,22 @@ function wardifyStartTracker(){
   }
   function sendSession(reason){
     if(sent) return;
+    // Persistent guard: if THIS session (by sessionId) already sent — even if the
+    // tracker was re-initialized and in-memory `sent` is false — do not send again.
+    if(isSessionAlreadySent()) { sent = true; return; }
     var playerName = getPlayerName();
     if(!playerName || playerName === 'Unknown') return;
-    // Ensure tick has run so any just-crossed warmup is committed.
     tick();
     // Gate: session row only logs if the user accumulated confirmed wall-clock time.
-    // wallClockMs is only non-zero once a run has crossed the 10-second warmup.
-    // Sessions shorter than 10s are silently dropped. Points are NOT gated by this —
-    // they log independently via wardifyLogScore as rounds finish.
+    // Sessions shorter than ~10s (didn't cross warmup) are silently dropped.
+    // Points log independently and are NOT gated by this.
     if(wallClockMs < 1000) return;
     sent = true;
+    markSessionSent();
     clearInterval(tickInterval);
     clearTimeout(inactivityTimer);
-    // Report wall-clock time as the headline duration — matches user expectation
-    // that 'I was on for 30 seconds' means 30 seconds of wall-clock, not 30 seconds
-    // of active mousing/typing. activeMs is kept as an additional metric.
     var payload = {
+      session_id: sessionId,
       player: getPlayerName(),
       device: getDeviceId(),
       book: getCurrentBook(),
@@ -58290,7 +58317,6 @@ function wardifyStartTracker(){
       reason: reason
     };
     sendPayload(payload);
-    // Score events are sent immediately by wardifyLogScore; no re-flush needed here.
   }
   // Tab visibility changes — pause both wall-clock and active time
   document.addEventListener('visibilitychange', function(){
