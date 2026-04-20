@@ -796,7 +796,7 @@ window.wardifyLogScore = (function(){
       localStorage.setItem('wfy_dedupe_reset_v2', '1');
     }
   } catch(e){}
-  function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode){
+  function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode, allChapters){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
     var reason = '';
@@ -825,7 +825,12 @@ window.wardifyLogScore = (function(){
     var dailySoFar = getDailyPoints('mainframe');
     var remaining = Math.max(0, DAILY_LIMIT - dailySoFar);
     var rawPts = Math.round(pts * 100) / 100;
-    pts = Math.min(rawPts, remaining);
+    // If all chapters are selected (flagged by allChapters param), no daily cap.
+    if(allChapters){
+      pts = rawPts;
+    } else {
+      pts = Math.min(rawPts, remaining);
+    }
     pts = Math.round(pts * 100) / 100;
     if(!reason){
       if(rawPts > 0 && pts < rawPts){
@@ -863,16 +868,23 @@ window.wardifyLogScore = (function(){
       reason = 'No correct answers';
     } else if(chapterCount < 3){
       reason = 'Points require 3+ chapters selected (only ' + chapterCount + ' selected)';
-    } else if(remaining <= 0){
+    } else if(remaining <= 0 && chapterCount < (window.wardifyTotalChapters || Infinity)){
       reason = 'Daily cap reached (' + limit + ' pts/day for ' + tool + ')';
     } else {
+      var allSelected = window.wardifyTotalChapters && chapterCount >= window.wardifyTotalChapters;
       rawPts = Math.round(correct * chapterCount * 0.1 * 100) / 100;
-      pts = Math.min(rawPts, remaining);
-      pts = Math.round(pts * 100) / 100;
-      if(pts < rawPts){
-        reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible (' + limit + ' pts/day).';
+      if(allSelected){
+        // All chapters selected — no daily cap applies
+        pts = rawPts;
+        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x ' + chapterCount + ' chapters x 0.1) [all chapters — no cap]';
       } else {
-        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x ' + chapterCount + ' chapters x 0.1)';
+        pts = Math.min(rawPts, remaining);
+        pts = Math.round(pts * 100) / 100;
+        if(pts < rawPts){
+          reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible (' + limit + ' pts/day).';
+        } else {
+          reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x ' + chapterCount + ' chapters x 0.1)';
+        }
       }
     }
     if(pts > 0) addDailyPoints(tool, pts);
@@ -889,7 +901,7 @@ window.wardifyLogScore = (function(){
       context: context || 'finished'
     });
   }
-  function logDrag(correct, total, context){
+  function logDrag(correct, total, context, allSelected){
     var pts = 0;
     var reason = '';
     var dailySoFar = getDailyPoints('Drag Study');
@@ -899,15 +911,21 @@ window.wardifyLogScore = (function(){
       reason = 'No items attempted';
     } else if(correct === 0){
       reason = 'No correct drops';
-    } else if(remaining <= 0){
+    } else if(remaining <= 0 && !allSelected){
       reason = 'Daily cap reached (' + DAILY_LIMIT + ' pts/day for Drag Study)';
     } else {
-      pts = Math.min(rawPts, remaining);
-      pts = Math.round(pts * 100) / 100;
-      if(pts < rawPts){
-        reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible.';
+      if(allSelected){
+        // All chapters selected — no daily cap applies
+        pts = rawPts;
+        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x 0.1) [all chapters — no cap]';
       } else {
-        reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x 0.1)';
+        pts = Math.min(rawPts, remaining);
+        pts = Math.round(pts * 100) / 100;
+        if(pts < rawPts){
+          reason = 'Capped at daily limit. Earned ' + pts + ' of ' + rawPts + ' eligible.';
+        } else {
+          reason = 'Scored ' + pts + ' pt' + (pts===1?'':'s') + ' (' + correct + ' correct x 0.1)';
+        }
       }
     }
     if(pts > 0) addDailyPoints('Drag Study', pts);
@@ -5847,6 +5865,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -6044,7 +6063,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -6055,7 +6075,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -6072,6 +6093,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -6091,7 +6113,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -6251,7 +6274,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -7767,6 +7790,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   // ALL hooks at top level — no hooks after conditional returns
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
@@ -8236,7 +8292,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -8579,6 +8635,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="acts">
@@ -13482,6 +13539,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -13679,7 +13737,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -13690,7 +13749,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -13707,6 +13767,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -13726,7 +13787,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -13886,7 +13948,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -15346,6 +15408,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   // ALL hooks at top level — no hooks after conditional returns
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
@@ -15814,7 +15909,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -16157,6 +16252,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="matt">
@@ -22082,6 +22178,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -22279,7 +22376,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -22290,7 +22388,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -22307,6 +22406,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -22326,7 +22426,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -22486,7 +22587,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -23946,6 +24047,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   // ALL hooks at top level — no hooks after conditional returns
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
@@ -24414,7 +24548,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -24757,6 +24891,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="luke">
@@ -28883,6 +29018,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -29080,7 +29216,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -29091,7 +29228,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -29108,6 +29246,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -29127,7 +29266,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -29287,7 +29427,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -30746,6 +30886,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   // ALL hooks at top level — no hooks after conditional returns
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
@@ -31214,7 +31387,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -31557,6 +31730,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="cor">
@@ -35915,6 +36089,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -36112,7 +36287,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -36123,7 +36299,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -36140,6 +36317,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -36159,7 +36337,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -36319,7 +36498,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -37548,6 +37727,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
     if(ajPhase === 'reader'){
@@ -37999,7 +38211,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -38339,6 +38551,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="gepc">
@@ -42466,6 +42679,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -42663,7 +42877,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -42674,7 +42889,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -42691,6 +42907,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -42710,7 +42927,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -42870,7 +43088,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -44099,6 +44317,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
     if(ajPhase === 'reader'){
@@ -44550,7 +44801,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -44890,6 +45141,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="romjam">
@@ -48855,6 +49107,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -49052,7 +49305,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -49063,7 +49317,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -49080,6 +49335,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -49099,7 +49355,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -49259,7 +49516,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -50320,6 +50577,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
     if(ajPhase === 'reader'){
@@ -50771,7 +51061,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -51111,6 +51401,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script type="wardify/bg" data-book="hebpet">
@@ -55433,6 +55724,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
   const [score,setScore]=React.useState({correct:0,total:0});
   const _dsScoreRef=React.useRef({c:0,t:0});
   const _dsLoggedRef=React.useRef({c:-1,t:-1});
+  const _dsActiveChs=React.useRef(0); // chapter count at game start — for tab-close flush
   const [ghost,setGhost]=React.useState(null);  // {id,x,y,offX,offY,item}
   const poolRef=React.useRef([]);
   const usedRef=React.useRef(new Set());
@@ -55630,7 +55922,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     if(window.wardifyLogScore){
       const {c,t}=_dsScoreRef.current;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t);
+      const _allSel=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, undefined, _allSel);
       _dsLoggedRef.current={c,t};
     }
   },[phase]);
@@ -55641,7 +55934,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
       const {c,t}=_dsScoreRef.current;
       if(!window.wardifyLogScore || t===0) return;
       if(_dsLoggedRef.current.c===c && _dsLoggedRef.current.t===t) return;
-      window.wardifyLogScore.drag(c, t, 'tab-closed');
+      const _allSel=_dsActiveChs.current>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(c, t, 'tab-closed', _allSel);
       _dsLoggedRef.current={c,t};
     });
     return function(){ if(window.wardifyActivity) window.wardifyActivity.set(null); };
@@ -55658,6 +55952,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     setScore({correct:0,total:0});
     _dsScoreRef.current={c:0,t:0};
     _dsLoggedRef.current={c:-1,t:-1};
+    _dsActiveChs.current=chs.length;
     const first=buildRound(pool,new Set(),chs);
     first.forEach(i=>usedRef.current.add(i.id));
     setRoundItems(first);
@@ -55677,7 +55972,8 @@ function DragStudyPage({ onBack, initialCustomVerses }){
     _dsScoreRef.current={c:newCorrect, t:newTotal};
     setChecked(true);
     if(window.wardifyLogScore){
-      window.wardifyLogScore.drag(newCorrect, newTotal);
+      const _allSelC=activeChs.length>=(window.wardifyTotalChapters||Infinity);
+      window.wardifyLogScore.drag(newCorrect, newTotal, undefined, _allSelC);
       _dsLoggedRef.current={c:newCorrect, t:newTotal};
     }
   }
@@ -55837,7 +56133,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <div style={{position:'relative',zIndex:3,height:'100%',display:'flex',flexDirection:'column',maxWidth:720,margin:'0 auto',padding:'0 .5rem'}}>
           {/* Header */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'.42rem 0 .2rem',flexShrink:0}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){window.wardifyLogScore.drag(c,t);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.28)',background:'rgba(255,255,255,0.68)'}} onClick={()=>{const {c,t}=_dsScoreRef.current;if(window.wardifyLogScore&&t>0&&!(_dsLoggedRef.current.c===c&&_dsLoggedRef.current.t===t)){const _allSelE=activeChs.length>=(window.wardifyTotalChapters||Infinity);window.wardifyLogScore.drag(c,t,undefined,_allSelE);_dsLoggedRef.current={c,t};}cancelAnimationFrame(rafRef.current);setPhase('setup');}}>✕ Exit</button>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'.57rem',color:'rgba(20,70,180,0.5)',textAlign:'center',lineHeight:1.75}}>
               <div>{done}/{pool.length} sorted</div>
               {score.total>0&&<div style={{color:'rgba(20,140,65,0.65)'}}>{score.correct}/{score.total} correct</div>}
@@ -57066,6 +57362,39 @@ function AnswerJudgeMaterialPage({ onBack }){
     if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setAnswerJudgeMode(false); };
   },[]);
+  // ── Answer Judge usage logger ──
+  React.useEffect(()=>{
+    var _ajStart = Date.now();
+    var _ajSent = false;
+    function _sendAJ(ctx){
+      if(_ajSent) return;
+      var durationMs = Date.now() - _ajStart;
+      if(durationMs < 2000) return;
+      _ajSent = true;
+      var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+      var payload = {
+        type: 'answerjudge',
+        player: localStorage.getItem('wardify_player_name') || 'Unknown',
+        device: localStorage.getItem('wardify_device_id') || 'unknown',
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        tool: 'Answer Judge',
+        duration_ms: durationMs,
+        duration: Math.floor(durationMs/60000)+'m '+Math.floor((durationMs/1000)%60)+'s',
+        context: ctx || 'exit',
+        _ts: Date.now()
+      };
+      var params = Object.keys(payload).map(function(k){
+        return encodeURIComponent(k)+'='+encodeURIComponent(payload[k]);
+      }).join('&');
+      try{ fetch(ENDPOINT+'?'+params,{method:'GET',mode:'no-cors',keepalive:true}); }catch(e){}
+    }
+    if(window.wardifyActivity) window.wardifyActivity.set(function(){ _sendAJ('tab-closed'); });
+    return ()=>{
+      _sendAJ('exit');
+      if(window.wardifyActivity) window.wardifyActivity.set(null);
+    };
+  },[]);
   const readerRef = React.useRef(null);
   React.useEffect(()=>{
     if(ajPhase === 'reader'){
@@ -57517,7 +57846,7 @@ function App({ onScore }){
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range');
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -57857,6 +58186,7 @@ function Login({ onLogin }){
 function Root(){
   return <App />;
 }
+window.wardifyTotalChapters = CHAPTERS_DATA.length;
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 <script>
