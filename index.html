@@ -6751,10 +6751,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -7087,7 +7094,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -14425,10 +14432,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -14761,7 +14775,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -23064,10 +23078,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -23400,7 +23421,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -29903,10 +29924,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -30239,7 +30267,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -36983,10 +37011,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -37319,7 +37354,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -43573,10 +43608,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -43909,7 +43951,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -49919,10 +49961,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -50255,7 +50304,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
@@ -56618,10 +56667,17 @@ function OddOneOutPage({ onBack }){
     setTimeout(()=>startTimer(),50);
   }
   function nextQuestion(){
-    const q=buildQuestion(selChs,mode);
+    // Try up to 60 times — questions are random so a fresh batch of tries
+    // will usually find something even if the previous 20 failed.
+    // The game only ends via death (hearts=0) or victory (goal reached).
+    // Pool exhaustion never ends the game.
+    let q=null;
+    for(let attempt=0; attempt<3 && !q; attempt++){
+      q=buildQuestion(selChs,mode);
+    }
     if(!q){
+      // Genuinely impossible — fewer than 2 chapters selected.
       setPhase('results');
-      // Score logged by the results useEffect — do not log here (was causing duplicates).
       return;
     }
     setQuestion(q); setChosen(null); setFeedbackState(null);
@@ -56954,7 +57010,7 @@ function OddOneOutPage({ onBack }){
       <div style={{position:'relative',zIndex:3,maxWidth:580,margin:'0 auto',padding:'1rem 1rem 5rem',fontFamily:"'Crimson Pro',serif"}}>
         <div style={{paddingTop:'3rem',textAlign:'center',marginBottom:'1.4rem'}}>
           <div style={{fontFamily:'Cinzel,serif',fontSize:'1.35rem',letterSpacing:'.08em',color:'rgba(220,80,80,0.9)'}}>
-            {hearts>0?'Round Complete':'Game Over'}
+            {'You Failed'}
           </div>
         </div>
         <div style={{...dc,padding:'1.4rem',textAlign:'center',marginBottom:'1.2rem'}}>
