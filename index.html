@@ -6678,50 +6678,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/\s+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -14359,50 +14364,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/\s+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -23005,50 +23015,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/\s+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -29851,50 +29866,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/\s+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/\s+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -36938,50 +36958,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -43535,50 +43560,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -49888,50 +49918,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
@@ -56594,50 +56629,55 @@ function OddOneOutPage({ onBack }){
   const dc={background:'rgba(10,8,12,0.9)',border:'1px solid rgba(180,30,30,0.3)',borderRadius:14,backdropFilter:'blur(10px)'};
   function shuffle(arr){ return arr.slice().sort(()=>Math.random()-.5); }
   /* ── Question builder ── */
+  function getChItems(ch, md){
+    if(md==='sections') return (CHAPTER_SECTIONS[ch]||[]).map(s=>s.heading);
+    if(md==='keywords'){
+      const kws=[];
+      CHAPTERS_DATA.find(c=>c.ch===ch)?.verses.forEach(v=>{
+        v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
+          const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===ch&&!kws.includes(core)) kws.push(core);
+        });
+      });
+      return kws;
+    }
+    return (CHAPTERS_DATA.find(c=>c.ch===ch)?.verses||[]).map(v=>v.t);
+  }
   function buildQuestion(chs,md){
     const chArr=[...chs].sort((a,b)=>a-b);
     if(chArr.length<2) return null;
+    // Pre-filter chapters by available item count for this mode.
+    // homeCh needs 3+ items; oddCh needs 1+ item.
+    // If no chapter has 3+ items, relax to the maximum available.
+    const itemMap={};
+    chArr.forEach(ch=>{ itemMap[ch]=getChItems(ch,md).length; });
+    const maxCount=Math.max(...chArr.map(ch=>itemMap[ch]));
+    const minHome=Math.min(3,maxCount);
+    const eligibleHome=chArr.filter(ch=>itemMap[ch]>=minHome);
+    const eligibleOdd=chArr.filter(ch=>itemMap[ch]>=1);
+    if(eligibleHome.length<1||eligibleOdd.length<2) return null;
     function tryBuild(){
-      const homeCh=chArr[Math.floor(Math.random()*chArr.length)];
-      const otherChs=chArr.filter(c=>c!==homeCh);
-      if(!otherChs.length) return null;
-      const oddCh=otherChs[Math.floor(Math.random()*otherChs.length)];
-      let homeItems=[], oddItems=[];
-      if(md==='sections'){
-        homeItems=shuffle(CHAPTER_SECTIONS[homeCh]||[]).map(s=>s.heading);
-        oddItems=shuffle(CHAPTER_SECTIONS[oddCh]||[]).map(s=>s.heading);
-      } else if(md==='keywords'){
-        const homeKws=[], oddKws=[];
-        CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===homeCh&&!homeKws.includes(core)) homeKws.push(core);
-          });
-        });
-        CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses.forEach(v=>{
-          v.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
-            const core=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-            if(core.length>=3&&KEY_WORDS.has(core)&&KEYWORD_TO_CHAPTER[core]===oddCh&&!oddKws.includes(core)) oddKws.push(core);
-          });
-        });
-        homeItems=shuffle(homeKws); oddItems=shuffle(oddKws);
-      } else {
-        homeItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===homeCh)?.verses||[]).map(v=>v.t);
-        oddItems=shuffle(CHAPTERS_DATA.find(c=>c.ch===oddCh)?.verses||[]).map(v=>v.t);
-      }
-      if(homeItems.length<3||oddItems.length<1) return null;
+      const homeCh=eligibleHome[Math.floor(Math.random()*eligibleHome.length)];
+      const oddPool=eligibleOdd.filter(c=>c!==homeCh);
+      if(!oddPool.length) return null;
+      const oddCh=oddPool[Math.floor(Math.random()*oddPool.length)];
+      const homeItems=shuffle(getChItems(homeCh,md));
+      const oddItems=shuffle(getChItems(oddCh,md));
+      if(!homeItems.length||!oddItems.length) return null;
       const h3=homeItems.slice(0,3);
       const oddItem=oddItems[0];
       if(h3.includes(oddItem)) return null;
+      while(h3.length<3) h3.push(homeItems[h3.length%homeItems.length]);
       const oddIdx=Math.floor(Math.random()*4);
       const choices=[]; let hi=0;
       for(let i=0;i<4;i++){
         if(i===oddIdx) choices.push({text:oddItem,ch:oddCh,isOdd:true});
-        else choices.push({text:h3[hi++],ch:homeCh,isOdd:false});
+        else choices.push({text:h3[hi%h3.length],ch:homeCh,isOdd:false});
+        if(i!==oddIdx) hi++;
       }
       return {choices,homeCh,oddCh,oddIdx};
     }
-    for(let a=0;a<20;a++){ const q=tryBuild(); if(q) return q; }
+    for(let a=0;a<30;a++){ const q=tryBuild(); if(q) return q; }
     return null;
   }
   React.useEffect(()=>{
