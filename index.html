@@ -58539,32 +58539,11 @@ function wfyDoSignout(){
 if(!window.wardifyPlayerName){
   wfyShowNameScreen();
 }else{
-  // Before auto-signing in, check if this player has been signed out by the admin
-  (function(){
-    var savedName = window.wardifyPlayerName;
-    var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
-    try{
-      fetch(ENDPOINT+'?type=checkstatus&player='+encodeURIComponent(savedName),
-            {method:'GET',mode:'no-cors'})
-        .then(function(r){ return r.json(); })
-        .then(function(data){
-          if(data && data.signout){
-            wfyDoSignout();
-          } else {
-            document.getElementById('wardify-name-screen').style.display='none';
-            wardifyAfterName();
-          }
-        })
-        .catch(function(){
-          // If check fails (offline, etc.) proceed normally
-          document.getElementById('wardify-name-screen').style.display='none';
-          wardifyAfterName();
-        });
-    } catch(e){
-      document.getElementById('wardify-name-screen').style.display='none';
-      wardifyAfterName();
-    }
-  })();
+  // Auto-sign in immediately — no blocking fetch.
+  // Signout check runs in background AFTER app loads; if flagged, signs out then.
+  document.getElementById('wardify-name-screen').style.display='none';
+  wardifyAfterName();
+  // Signout check disabled — re-enable when updated Apps Script is deployed.
 }
 
 /* ═══════════════════════════════════════════════════════════
