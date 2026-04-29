@@ -5761,7 +5761,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref){
+function useLightBlueBg(ref, phase){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -5832,11 +5832,11 @@ function useLightBlueBg(ref){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[]);
+  },[phase]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
-  useLightBlueBg(bgRef);
+  useLightBlueBg(bgRef, phase);
   React.useEffect(()=>{
     if(window.BgMgr)window.BgMgr.setToolsMode(true);
     return()=>{if(window.BgMgr)window.BgMgr.setToolsMode(false);};
@@ -36033,7 +36033,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref){
+function useLightBlueBg(ref, phase){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -36104,7 +36104,7 @@ function useLightBlueBg(ref){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[]);
+  },[phase]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -42635,7 +42635,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref){
+function useLightBlueBg(ref, phase){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -42706,7 +42706,7 @@ function useLightBlueBg(ref){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[]);
+  },[phase]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -49075,7 +49075,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref){
+function useLightBlueBg(ref, phase){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -49146,7 +49146,7 @@ function useLightBlueBg(ref){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[]);
+  },[phase]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -55704,7 +55704,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref){
+function useLightBlueBg(ref, phase){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -55775,7 +55775,7 @@ function useLightBlueBg(ref){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[]);
+  },[phase]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
