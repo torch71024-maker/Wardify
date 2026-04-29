@@ -597,9 +597,14 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
     <div style="font-family:'Cinzel',serif;font-size:clamp(1.4rem,4vw,2rem);font-weight:600;letter-spacing:.1em;color:#f5e6c8;margin-bottom:.4rem;text-shadow:0 0 30px rgba(201,162,39,0.4);">WARDIFY</div>
     <div style="font-family:'Cinzel',serif;font-size:.72rem;letter-spacing:.18em;color:rgba(201,162,39,0.6);margin-bottom:2.2rem;">BIBLE MEMORY TOOLS</div>
     <div style="background:rgba(0,0,0,0.55);border:1px solid rgba(201,162,39,0.2);border-radius:16px;padding:2rem 1.8rem;backdrop-filter:blur(8px);">
-      <div style="font-size:1.05rem;color:#ddd5c4;line-height:1.75;margin-bottom:1.4rem;">
-        Please type your <strong style="color:#f5e6c8;">real first and last name</strong>.<br/>
-        <span style="font-style:italic;font-size:.88rem;color:rgba(200,185,160,0.6);">You will likely only have to do this once.</span>
+      <div style="margin-bottom:1.4rem;">
+        <div style="font-family:'Cinzel',serif;font-size:clamp(1.1rem,3.5vw,1.5rem);font-weight:700;letter-spacing:.06em;color:#ff4444;text-shadow:0 0 18px rgba(255,60,60,0.5);margin-bottom:.5rem;">
+          USE YOUR REAL NAME
+        </div>
+        <div style="font-size:.95rem;color:#ddd5c4;line-height:1.7;">
+          Your <strong style="color:#f5e6c8;font-size:1.05rem;">real first and last name.</strong><br/>
+          <span style="font-style:italic;font-size:.85rem;color:rgba(200,185,160,0.55);">You will likely only have to do this once.</span>
+        </div>
       </div>
       <input id="wardify-name-input" type="text" placeholder="First Last"
         style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(201,162,39,0.35);border-radius:8px;padding:.65rem 1rem;font-family:'Crimson Pro',serif;font-size:1.05rem;color:#f5e6c8;outline:none;margin-bottom:1rem;box-sizing:border-box;"
@@ -3119,6 +3124,9 @@ const KEYWORD_TO_CHAPTER = (()=>{
 })();
 // For each verse, how many words must be shown before it becomes unique among all of John?
 // = (longest prefix shared with any other verse) + 1
+function chLabel(ch) {
+  return 'John ' + ch;
+}
 const VERSE_UNIQUE_PREFIX = (()=>{
   const result = {};
   const allVerses = [];
@@ -4163,20 +4171,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(' ');
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -5761,7 +5774,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref, phase){
+function useLightBlueBg(ref){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -5832,11 +5845,11 @@ function useLightBlueBg(ref, phase){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[phase]);
+  },[]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
-  useLightBlueBg(bgRef, phase);
+  useDragBgCanvas(bgRef);
   React.useEffect(()=>{
     if(window.BgMgr)window.BgMgr.setToolsMode(true);
     return()=>{if(window.BgMgr)window.BgMgr.setToolsMode(false);};
@@ -6156,7 +6169,7 @@ function DragStudyPage({ onBack, initialCustomVerses }){
         <canvas ref={bgRef} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:2,pointerEvents:'none'}}/>
         <div style={{position:'relative',zIndex:3,maxWidth:680,margin:'0 auto',padding:'1rem 1rem 6rem',fontFamily:"'Crimson Pro',serif"}}>
           <div style={{position:'fixed',top:'1.1rem',left:'1rem',zIndex:60}}>
-            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.3)',background:'rgba(255,255,255,0.7)'}} onClick={()=>{if(window.wardifyLogScore&&history.length>0){window.wardifyLogScore.drag(history.filter(h=>h.correct).length,history.length);}onBack();}}>← Back</button>
+            <button className="kq-nav-btn" style={{color:'#1848a0',borderColor:'rgba(40,120,220,0.3)',background:'rgba(255,255,255,0.7)'}} onClick={()=>onBack()}>← Back</button>
           </div>
           <div style={{paddingTop:'3.5rem',textAlign:'center',marginBottom:'1.5rem'}}>
             <div style={{fontFamily:'Cinzel,serif',fontSize:'1.5rem',letterSpacing:'.08em',color:'#7ec8f8',marginBottom:'.25rem',textShadow:'0 2px 10px rgba(60,140,255,0.4)'}}>🧺 Drag Study Game</div>
@@ -10934,6 +10947,9 @@ const KEYWORD_TO_CHAPTER = (()=>{
 })();
 // For each verse, how many words must be shown before it becomes unique among all of John?
 // = (longest prefix shared with any other verse) + 1
+function chLabel(ch) {
+  return 'Acts ' + ch;
+}
 const VERSE_UNIQUE_PREFIX = (()=>{
   const result = {};
   const allVerses = [];
@@ -11926,20 +11942,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(' ');
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -13522,7 +13543,7 @@ function useLightBlueBg(ref){
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
-  useLightBlueBg(bgRef);
+  useDragBgCanvas(bgRef);
   React.useEffect(()=>{
     if(window.BgMgr)window.BgMgr.setDragMode(true);
     return()=>{if(window.BgMgr)window.BgMgr.setDragMode(false);};
@@ -19536,6 +19557,12 @@ const KEYWORD_TO_CHAPTER = (()=>{
 })();
 // For each verse, how many words must be shown before it becomes unique among all of Matthew?
 // = (longest prefix shared with any other verse) + 1
+function chLabel(ch) {
+  // Matt chapters: 1-12, 14-17 (stored as sequential 1-16, ch 13 skipped)
+  var mattChs = [1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17];
+  var real = mattChs[ch-1] || ch;
+  return 'Matt ' + real;
+}
 const VERSE_UNIQUE_PREFIX = (()=>{
   const result = {};
   const allVerses = [];
@@ -20528,20 +20555,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(' ');
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -22173,7 +22205,7 @@ function useLightBlueBg(ref){
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
-  useLightBlueBg(bgRef);
+  useDragBgCanvas(bgRef);
   React.useEffect(()=>{
     if(window.BgMgr)window.BgMgr.setDragMode(true);
     return()=>{if(window.BgMgr)window.BgMgr.setDragMode(false);};
@@ -27421,20 +27453,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(' ');
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -29025,7 +29062,7 @@ function useLightBlueBg(ref){
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
-  useLightBlueBg(bgRef);
+  useDragBgCanvas(bgRef);
   React.useEffect(()=>{
     if(window.BgMgr)window.BgMgr.setDragMode(true);
     return()=>{if(window.BgMgr)window.BgMgr.setDragMode(false);};
@@ -34396,20 +34433,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(/[\s\u2014\u2013]+/);
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -36033,7 +36075,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref, phase){
+function useLightBlueBg(ref){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -36104,7 +36146,7 @@ function useLightBlueBg(ref, phase){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[phase]);
+  },[]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -41013,20 +41055,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(/[\s\u2014\u2013]+/);
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -42635,7 +42682,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref, phase){
+function useLightBlueBg(ref){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -42706,7 +42753,7 @@ function useLightBlueBg(ref, phase){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[phase]);
+  },[]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -47549,20 +47596,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(/[\s\u2014\u2013]+/);
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -49075,7 +49127,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref, phase){
+function useLightBlueBg(ref){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -49146,7 +49198,7 @@ function useLightBlueBg(ref, phase){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[phase]);
+  },[]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
@@ -54077,20 +54129,25 @@ function HeadToHeadPage({ onBack, initialCustomVerses }){
   return null;
 }
 function ReadingVerse({verse, ch, showJump}){
-  const words = verse.t.split(/[\s\u2014\u2013]+/);
+  const rawTokens = verse.t.split(/( |[–—―])/);
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
+  let wordIdx = 0;
   return (
     <div className="verse">
       <span className="vnum static-vnum">{verse.v}</span>
       <span className="vtext">
-        {words.map((w,i)=>{
-          const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
-          const isKey = core.length>=3 && KEY_WORDS.has(core);
-          const isJumpPoint = showJump && i === uniquePrefix;
+        {rawTokens.map((tok,i)=>{
+          if(tok === '') return null;
+          const isSpace = tok === ' ';
+          const isDash = /^[–—―]$/.test(tok);
+          const isJumpPoint = showJump && !isSpace && !isDash && wordIdx === uniquePrefix;
+          const core = tok.replace(/[^a-zA-Z]/g,'').toLowerCase();
+          const isKey = !isDash && core.length>=3 && KEY_WORDS.has(core);
+          if(!isSpace && !isDash) wordIdx++;
           return (
             <span key={i}>
               {isJumpPoint && <span className="ftv-jump" title="FTV jump point">/</span>}
-              {isKey ? <strong className="key-word">{w}</strong> : w}{' '}
+              {isKey ? <strong className="key-word">{tok}</strong> : tok}
             </span>
           );
         })}
@@ -55704,7 +55761,7 @@ function useDragBgCanvas(canvasRef){
 /* ════════════════════════════════════════
    DRAG STUDY GAME — light shiny blue
 ════════════════════════════════════════ */
-function useLightBlueBg(ref, phase){
+function useLightBlueBg(ref){
   React.useEffect(()=>{
     const c=ref.current; if(!c) return;
     let W=c.width=window.innerWidth,H=c.height=window.innerHeight;
@@ -55775,7 +55832,7 @@ function useLightBlueBg(ref, phase){
     function onRes(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
     window.addEventListener('resize',onRes);
     return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onRes);};
-  },[phase]);
+  },[]);
 }
 function DragStudyPage({ onBack, initialCustomVerses }){
   const bgRef=React.useRef(null);
