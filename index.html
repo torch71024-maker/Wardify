@@ -58462,17 +58462,52 @@ function wardifyAfterName(){
   }
   draw();
 })();
-/* ── Startup: show name screen if no name saved, else go straight in ── */
-if(!window.wardifyPlayerName){
+/* ── Startup: check for Signout command, then show name screen or auto-sign in ── */
+function wfyShowNameScreen(){
   document.getElementById('wardify-name-screen').style.display='flex';
   document.getElementById('wardify-picker').style.display='none';
   setTimeout(function(){
     var inp=document.getElementById('wardify-name-input');
     if(inp)inp.focus();
   },200);
+}
+function wfyDoSignout(){
+  // Clear name but preserve device ID
+  localStorage.removeItem('wardify_player_name');
+  window.wardifyPlayerName=null;
+  window._wardifyTrackerStarted=false;
+  if(window.wardifySendSession)try{window.wardifySendSession();}catch(e){}
+  wfyShowNameScreen();
+}
+if(!window.wardifyPlayerName){
+  wfyShowNameScreen();
 }else{
-  document.getElementById('wardify-name-screen').style.display='none';
-  wardifyAfterName();
+  // Before auto-signing in, check if this player has been signed out by the admin
+  (function(){
+    var savedName = window.wardifyPlayerName;
+    var ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7EmyvTlIW_GIKrQj6dGracByt-otf__8UZCgvKxKIVydmg4Zp2zmiMGnnYZQBlsU/exec';
+    try{
+      fetch(ENDPOINT+'?type=checkstatus&player='+encodeURIComponent(savedName),
+            {method:'GET',mode:'no-cors'})
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if(data && data.signout){
+            wfyDoSignout();
+          } else {
+            document.getElementById('wardify-name-screen').style.display='none';
+            wardifyAfterName();
+          }
+        })
+        .catch(function(){
+          // If check fails (offline, etc.) proceed normally
+          document.getElementById('wardify-name-screen').style.display='none';
+          wardifyAfterName();
+        });
+    } catch(e){
+      document.getElementById('wardify-name-screen').style.display='none';
+      wardifyAfterName();
+    }
+  })();
 }
 
 /* ═══════════════════════════════════════════════════════════
