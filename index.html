@@ -4580,7 +4580,7 @@ function KeywordQuiz({ onBack }) {
               {answered?(
                 <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
               ):(
-                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>`John ${current.ch}`</div>
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{"John " + current.ch}</div>
               )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
@@ -12351,7 +12351,7 @@ function KeywordQuiz({ onBack }) {
               {answered?(
                 <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
               ):(
-                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>`Acts ${current.ch}`</div>
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{"Acts " + current.ch}</div>
               )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
@@ -20964,7 +20964,7 @@ function KeywordQuiz({ onBack }) {
               {answered?(
                 <div className="kq-verse-reveal">{(()=>{const vd=getVerseText(current.item,current.ch);return vd?highlightItem(vd.text,current.item):current.item;})()}</div>
               ):(
-                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>`Matt ${current.ch}`</div>
+                <div className="kq-word" style={{fontSize:'2.2rem',letterSpacing:'.12em',color:'var(--c-accent)'}}>{"Matt " + current.ch}</div>
               )}
               <div className="kq-verse-ref">
                 {answered && getVerseRef(current.item, current.ch)}
