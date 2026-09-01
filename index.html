@@ -589,6 +589,9 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 @keyframes bsk-pop{0%{transform:scale(1) rotate(0deg)}20%{transform:scale(1.12) rotate(-3deg)}50%{transform:scale(0.96) rotate(2deg)}75%{transform:scale(1.04) rotate(-1deg)}100%{transform:scale(1) rotate(0deg)}}
 @keyframes item-sink{0%{transform:scale(1) translateY(0);opacity:1}55%{transform:scale(0.32) translateY(16px);opacity:0.55}100%{transform:scale(0) translateY(28px);opacity:0}}
 </style>
+<style id="wfy-refmode-style">
+.wfy-ref-label{min-width:5.6rem;color:var(--c-accent);font-weight:600;white-space:nowrap;font-size:.66rem}
+</style>
 </head>
 <body>
 <div id="wardify-name-screen" style="position:fixed;inset:0;z-index:9100;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;font-family:'Crimson Pro',serif;">
@@ -652,18 +655,6 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
     <div class="wfy-s-section">
       <div class="wfy-s-label">Study Material <span style="color:rgba(180,170,255,.35);font-size:.63rem;"> &mdash; Default: Acts</span></div>
       <div class="wfy-s-books" id="wfy-s-books"></div>
-    </div>
-    <div class="wfy-s-section">
-      <div class="wfy-s-label">Offline Download</div>
-      <div class="wfy-s-row" style="flex-direction:column;align-items:flex-start;gap:.3rem;">
-        <div class="wfy-s-row-text">Download this app for offline use</div>
-        <div class="wfy-s-row-sub">Enter the access password to unlock download</div>
-        <div class="wfy-s-pw-row">
-          <input class="wfy-s-pw-input" type="password" id="wfy-s-pw" placeholder="Password…"/>
-          <button class="wfy-s-pw-btn" id="wfy-s-pw-btn">Download</button>
-        </div>
-        <div class="wfy-s-pw-msg" id="wfy-s-pw-msg"></div>
-      </div>
     </div>
     <div class="wfy-s-section">
       <div class="wfy-s-label">Admin Access</div>
@@ -4197,7 +4188,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -4208,6 +4199,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -4216,6 +4212,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -7473,6 +7470,9 @@ function SituationQuotationsPage({ onBack }){
   const [quotations, setQuotations] = useState([]);
   const [qIdx, setQIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [typeMode, setTypeMode] = useState(false);
+  const [attempt, setAttempt] = useState('');
+  const [graded, setGraded] = useState(null);
   React.useEffect(()=>{
     if(window.BgMgr) window.BgMgr.setSituationMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setSituationMode(false); };
@@ -7625,6 +7625,37 @@ function SituationQuotationsPage({ onBack }){
     }
     return quote;
   }
+  /* ── Finish-the-Quote helpers ── */
+  function sqNormWord(w){ return (w||'').toLowerCase().replace(/[\u2019]/g,"'").replace(/[^a-z0-9']/g,''); }
+  function sqWords(s){ return (s||'').trim().split(/\s+/).filter(Boolean); }
+  /* The remainder is the full quote minus the prefix already shown. */
+  function sqRemainder(qq){
+    if(!qq) return '';
+    const shown = sqWords(qq.uniquePoint).length;
+    return sqWords(qq.fullQuote).slice(shown).join(' ');
+  }
+  /* LCS alignment so one missing word doesn't mark everything after it wrong. */
+  function sqGrade(userText, expectedText){
+    const uw = sqWords(userText), ew = sqWords(expectedText);
+    const nu = uw.map(sqNormWord), ne = ew.map(sqNormWord);
+    const m = nu.length, n = ne.length;
+    const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+    for(let i=m-1;i>=0;i--){
+      for(let j=n-1;j>=0;j--){
+        dp[i][j] = nu[i]===ne[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    const marks = []; let i=0, j=0, extra=0;
+    while(i<m && j<n){
+      if(nu[i]===ne[j]){ marks.push({w:ew[j], s:'ok'}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ i++; extra++; }
+      else { marks.push({w:ew[j], s:'miss'}); j++; }
+    }
+    while(j<n){ marks.push({w:ew[j], s:'miss'}); j++; }
+    while(i<m){ i++; extra++; }
+    return {marks, ok: marks.filter(x=>x.s==='ok').length, total: n, extra};
+  }
+  function sqReset(){ setAttempt(''); setGraded(null); setRevealed(false); }
   const allChapters = CHAPTERS_DATA.map(cd=>cd.ch);
   function startBrowse(){
     const qs = buildQuotations(selChs);
@@ -7632,6 +7663,7 @@ function SituationQuotationsPage({ onBack }){
     setQuotations(qs);
     setQIdx(0);
     setRevealed(false);
+    setAttempt(''); setGraded(null);
     setPhase('browse');
   }
   // Count quotes quickly for setup screen
@@ -7762,6 +7794,74 @@ function SituationQuotationsPage({ onBack }){
             …
           </div>
         </div>
+        {/* Finish the Quote — optional typing mode */}
+        <div style={{textAlign:'center',marginBottom:'.9rem'}}>
+          <button onClick={()=>{ setTypeMode(t=>!t); setAttempt(''); setGraded(null); }}
+            style={{...sqBtnGhost,fontSize:'.68rem',padding:'.32rem 1rem'}}>
+            {typeMode ? '👁 Browse only' : '✍ Finish the quote'}
+          </button>
+        </div>
+        {typeMode && (()=>{
+          const rest = sqRemainder(q);
+          if(!rest){
+            return (
+              <div style={{...sqCard,textAlign:'center'}}>
+                <div style={{fontStyle:'italic',fontSize:'.9rem',color:'rgba(0,0,0,0.5)'}}>
+                  This quote is shown in full — there is nothing left to finish.
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div style={sqCard}>
+              <div style={sqLabel}>FINISH THE QUOTE</div>
+              <textarea value={attempt} onChange={e=>setAttempt(e.target.value)}
+                disabled={!!graded} rows={3}
+                placeholder="Type the rest of the quote…"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                onKeyDown={e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); if(!graded) setGraded(sqGrade(attempt, rest)); } }}
+                style={{width:'100%',boxSizing:'border-box',fontFamily:"'Crimson Pro',serif",
+                  fontSize:'1rem',lineHeight:1.6,padding:'.6rem .8rem',borderRadius:8,
+                  border:'1px solid rgba(0,0,0,0.3)',background:'rgba(255,255,255,0.35)',
+                  color:'rgba(0,0,0,0.85)',outline:'none',resize:'vertical'}}/>
+              <div style={{display:'flex',gap:'.55rem',justifyContent:'center',marginTop:'.7rem',flexWrap:'wrap'}}>
+                {!graded ? (
+                  <button onClick={()=>setGraded(sqGrade(attempt, rest))}
+                    disabled={!attempt.trim()}
+                    style={{...sqBtn,opacity:attempt.trim()?1:.4,
+                      cursor:attempt.trim()?'pointer':'default'}}>
+                    Check
+                  </button>
+                ) : (
+                  <button onClick={()=>{ setAttempt(''); setGraded(null); }} style={sqBtnGhost}>
+                    Try Again
+                  </button>
+                )}
+              </div>
+              {graded && (
+                <div style={{marginTop:'.9rem'}}>
+                  <div style={{fontFamily:"'Cinzel',serif",fontSize:'.68rem',letterSpacing:'.1em',
+                    color:'rgba(0,0,0,0.6)',marginBottom:'.5rem'}}>
+                    {graded.ok} / {graded.total} words
+                    {graded.extra>0 ? ' · ' + graded.extra + ' extra word' + (graded.extra>1?'s':'') : ''}
+                    {graded.ok===graded.total && graded.extra===0 ? ' · ✦ Perfect' : ''}
+                  </div>
+                  <div style={{fontSize:'1.05rem',lineHeight:1.8}}>
+                    {graded.marks.map((mk,mi)=>(
+                      <span key={mi} style={{
+                        color: mk.s==='ok' ? '#0a5c26' : '#8f1010',
+                        fontWeight: mk.s==='ok' ? 600 : 700,
+                        textDecoration: mk.s==='ok' ? 'none' : 'underline',
+                        textDecorationStyle: 'wavy'}}>
+                        {mk.w}{' '}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* Show Answer / revealed */}
         {!revealed ? (
           <div style={{textAlign:'center',marginBottom:'1rem'}}>
@@ -7782,12 +7882,12 @@ function SituationQuotationsPage({ onBack }){
         )}
         {/* Navigation — always at bottom */}
         <div style={{display:'flex',gap:'.8rem',justifyContent:'center',marginTop:'1rem',flexWrap:'wrap'}}>
-          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);sqReset();}}}
             disabled={qIdx===0}
             style={{...sqBtnGhost,opacity:qIdx===0?.35:1,cursor:qIdx===0?'default':'pointer'}}>
             ← Prev
           </button>
-          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);sqReset();}}}
             disabled={qIdx>=quotations.length-1}
             style={{...sqBtn,opacity:qIdx>=quotations.length-1?.35:1,cursor:qIdx>=quotations.length-1?'default':'pointer'}}>
             Next →
@@ -8172,7 +8272,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -8189,6 +8289,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -8239,11 +8340,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -8251,7 +8352,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -8260,12 +8361,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -8296,11 +8401,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -8323,7 +8430,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -8429,7 +8536,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -8445,6 +8552,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -8464,11 +8576,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -11968,7 +12080,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -11979,6 +12091,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -11987,6 +12104,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -15111,6 +15229,9 @@ function SituationQuotationsPage({ onBack }){
   const [quotations, setQuotations] = useState([]);
   const [qIdx, setQIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [typeMode, setTypeMode] = useState(false);
+  const [attempt, setAttempt] = useState('');
+  const [graded, setGraded] = useState(null);
   React.useEffect(()=>{
     if(window.BgMgr) window.BgMgr.setSituationMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setSituationMode(false); };
@@ -15263,6 +15384,37 @@ function SituationQuotationsPage({ onBack }){
     }
     return quote;
   }
+  /* ── Finish-the-Quote helpers ── */
+  function sqNormWord(w){ return (w||'').toLowerCase().replace(/[\u2019]/g,"'").replace(/[^a-z0-9']/g,''); }
+  function sqWords(s){ return (s||'').trim().split(/\s+/).filter(Boolean); }
+  /* The remainder is the full quote minus the prefix already shown. */
+  function sqRemainder(qq){
+    if(!qq) return '';
+    const shown = sqWords(qq.uniquePoint).length;
+    return sqWords(qq.fullQuote).slice(shown).join(' ');
+  }
+  /* LCS alignment so one missing word doesn't mark everything after it wrong. */
+  function sqGrade(userText, expectedText){
+    const uw = sqWords(userText), ew = sqWords(expectedText);
+    const nu = uw.map(sqNormWord), ne = ew.map(sqNormWord);
+    const m = nu.length, n = ne.length;
+    const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+    for(let i=m-1;i>=0;i--){
+      for(let j=n-1;j>=0;j--){
+        dp[i][j] = nu[i]===ne[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    const marks = []; let i=0, j=0, extra=0;
+    while(i<m && j<n){
+      if(nu[i]===ne[j]){ marks.push({w:ew[j], s:'ok'}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ i++; extra++; }
+      else { marks.push({w:ew[j], s:'miss'}); j++; }
+    }
+    while(j<n){ marks.push({w:ew[j], s:'miss'}); j++; }
+    while(i<m){ i++; extra++; }
+    return {marks, ok: marks.filter(x=>x.s==='ok').length, total: n, extra};
+  }
+  function sqReset(){ setAttempt(''); setGraded(null); setRevealed(false); }
   const allChapters = CHAPTERS_DATA.map(cd=>cd.ch);
   function startBrowse(){
     const qs = buildQuotations(selChs);
@@ -15270,6 +15422,7 @@ function SituationQuotationsPage({ onBack }){
     setQuotations(qs);
     setQIdx(0);
     setRevealed(false);
+    setAttempt(''); setGraded(null);
     setPhase('browse');
   }
   // Count quotes quickly for setup screen
@@ -15400,6 +15553,74 @@ function SituationQuotationsPage({ onBack }){
             …
           </div>
         </div>
+        {/* Finish the Quote — optional typing mode */}
+        <div style={{textAlign:'center',marginBottom:'.9rem'}}>
+          <button onClick={()=>{ setTypeMode(t=>!t); setAttempt(''); setGraded(null); }}
+            style={{...sqBtnGhost,fontSize:'.68rem',padding:'.32rem 1rem'}}>
+            {typeMode ? '👁 Browse only' : '✍ Finish the quote'}
+          </button>
+        </div>
+        {typeMode && (()=>{
+          const rest = sqRemainder(q);
+          if(!rest){
+            return (
+              <div style={{...sqCard,textAlign:'center'}}>
+                <div style={{fontStyle:'italic',fontSize:'.9rem',color:'rgba(0,0,0,0.5)'}}>
+                  This quote is shown in full — there is nothing left to finish.
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div style={sqCard}>
+              <div style={sqLabel}>FINISH THE QUOTE</div>
+              <textarea value={attempt} onChange={e=>setAttempt(e.target.value)}
+                disabled={!!graded} rows={3}
+                placeholder="Type the rest of the quote…"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                onKeyDown={e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); if(!graded) setGraded(sqGrade(attempt, rest)); } }}
+                style={{width:'100%',boxSizing:'border-box',fontFamily:"'Crimson Pro',serif",
+                  fontSize:'1rem',lineHeight:1.6,padding:'.6rem .8rem',borderRadius:8,
+                  border:'1px solid rgba(0,0,0,0.3)',background:'rgba(255,255,255,0.35)',
+                  color:'rgba(0,0,0,0.85)',outline:'none',resize:'vertical'}}/>
+              <div style={{display:'flex',gap:'.55rem',justifyContent:'center',marginTop:'.7rem',flexWrap:'wrap'}}>
+                {!graded ? (
+                  <button onClick={()=>setGraded(sqGrade(attempt, rest))}
+                    disabled={!attempt.trim()}
+                    style={{...sqBtn,opacity:attempt.trim()?1:.4,
+                      cursor:attempt.trim()?'pointer':'default'}}>
+                    Check
+                  </button>
+                ) : (
+                  <button onClick={()=>{ setAttempt(''); setGraded(null); }} style={sqBtnGhost}>
+                    Try Again
+                  </button>
+                )}
+              </div>
+              {graded && (
+                <div style={{marginTop:'.9rem'}}>
+                  <div style={{fontFamily:"'Cinzel',serif",fontSize:'.68rem',letterSpacing:'.1em',
+                    color:'rgba(0,0,0,0.6)',marginBottom:'.5rem'}}>
+                    {graded.ok} / {graded.total} words
+                    {graded.extra>0 ? ' · ' + graded.extra + ' extra word' + (graded.extra>1?'s':'') : ''}
+                    {graded.ok===graded.total && graded.extra===0 ? ' · ✦ Perfect' : ''}
+                  </div>
+                  <div style={{fontSize:'1.05rem',lineHeight:1.8}}>
+                    {graded.marks.map((mk,mi)=>(
+                      <span key={mi} style={{
+                        color: mk.s==='ok' ? '#0a5c26' : '#8f1010',
+                        fontWeight: mk.s==='ok' ? 600 : 700,
+                        textDecoration: mk.s==='ok' ? 'none' : 'underline',
+                        textDecorationStyle: 'wavy'}}>
+                        {mk.w}{' '}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* Show Answer / revealed */}
         {!revealed ? (
           <div style={{textAlign:'center',marginBottom:'1rem'}}>
@@ -15420,12 +15641,12 @@ function SituationQuotationsPage({ onBack }){
         )}
         {/* Navigation — always at bottom */}
         <div style={{display:'flex',gap:'.8rem',justifyContent:'center',marginTop:'1rem',flexWrap:'wrap'}}>
-          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);sqReset();}}}
             disabled={qIdx===0}
             style={{...sqBtnGhost,opacity:qIdx===0?.35:1,cursor:qIdx===0?'default':'pointer'}}>
             ← Prev
           </button>
-          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);sqReset();}}}
             disabled={qIdx>=quotations.length-1}
             style={{...sqBtn,opacity:qIdx>=quotations.length-1?.35:1,cursor:qIdx>=quotations.length-1?'default':'pointer'}}>
             Next →
@@ -15809,7 +16030,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -15826,6 +16047,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -15876,11 +16098,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -15888,7 +16110,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -15897,12 +16119,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -15933,11 +16159,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -15960,7 +16188,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -16066,7 +16294,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -16082,6 +16310,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -16101,11 +16334,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -20581,7 +20814,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -20592,6 +20825,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -20600,6 +20838,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -23773,6 +24012,9 @@ function SituationQuotationsPage({ onBack }){
   const [quotations, setQuotations] = useState([]);
   const [qIdx, setQIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [typeMode, setTypeMode] = useState(false);
+  const [attempt, setAttempt] = useState('');
+  const [graded, setGraded] = useState(null);
   React.useEffect(()=>{
     if(window.BgMgr) window.BgMgr.setSituationMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setSituationMode(false); };
@@ -23925,6 +24167,37 @@ function SituationQuotationsPage({ onBack }){
     }
     return quote;
   }
+  /* ── Finish-the-Quote helpers ── */
+  function sqNormWord(w){ return (w||'').toLowerCase().replace(/[\u2019]/g,"'").replace(/[^a-z0-9']/g,''); }
+  function sqWords(s){ return (s||'').trim().split(/\s+/).filter(Boolean); }
+  /* The remainder is the full quote minus the prefix already shown. */
+  function sqRemainder(qq){
+    if(!qq) return '';
+    const shown = sqWords(qq.uniquePoint).length;
+    return sqWords(qq.fullQuote).slice(shown).join(' ');
+  }
+  /* LCS alignment so one missing word doesn't mark everything after it wrong. */
+  function sqGrade(userText, expectedText){
+    const uw = sqWords(userText), ew = sqWords(expectedText);
+    const nu = uw.map(sqNormWord), ne = ew.map(sqNormWord);
+    const m = nu.length, n = ne.length;
+    const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+    for(let i=m-1;i>=0;i--){
+      for(let j=n-1;j>=0;j--){
+        dp[i][j] = nu[i]===ne[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    const marks = []; let i=0, j=0, extra=0;
+    while(i<m && j<n){
+      if(nu[i]===ne[j]){ marks.push({w:ew[j], s:'ok'}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ i++; extra++; }
+      else { marks.push({w:ew[j], s:'miss'}); j++; }
+    }
+    while(j<n){ marks.push({w:ew[j], s:'miss'}); j++; }
+    while(i<m){ i++; extra++; }
+    return {marks, ok: marks.filter(x=>x.s==='ok').length, total: n, extra};
+  }
+  function sqReset(){ setAttempt(''); setGraded(null); setRevealed(false); }
   const allChapters = CHAPTERS_DATA.map(cd=>cd.ch);
   function startBrowse(){
     const qs = buildQuotations(selChs);
@@ -23932,6 +24205,7 @@ function SituationQuotationsPage({ onBack }){
     setQuotations(qs);
     setQIdx(0);
     setRevealed(false);
+    setAttempt(''); setGraded(null);
     setPhase('browse');
   }
   // Count quotes quickly for setup screen
@@ -24062,6 +24336,74 @@ function SituationQuotationsPage({ onBack }){
             …
           </div>
         </div>
+        {/* Finish the Quote — optional typing mode */}
+        <div style={{textAlign:'center',marginBottom:'.9rem'}}>
+          <button onClick={()=>{ setTypeMode(t=>!t); setAttempt(''); setGraded(null); }}
+            style={{...sqBtnGhost,fontSize:'.68rem',padding:'.32rem 1rem'}}>
+            {typeMode ? '👁 Browse only' : '✍ Finish the quote'}
+          </button>
+        </div>
+        {typeMode && (()=>{
+          const rest = sqRemainder(q);
+          if(!rest){
+            return (
+              <div style={{...sqCard,textAlign:'center'}}>
+                <div style={{fontStyle:'italic',fontSize:'.9rem',color:'rgba(0,0,0,0.5)'}}>
+                  This quote is shown in full — there is nothing left to finish.
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div style={sqCard}>
+              <div style={sqLabel}>FINISH THE QUOTE</div>
+              <textarea value={attempt} onChange={e=>setAttempt(e.target.value)}
+                disabled={!!graded} rows={3}
+                placeholder="Type the rest of the quote…"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                onKeyDown={e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); if(!graded) setGraded(sqGrade(attempt, rest)); } }}
+                style={{width:'100%',boxSizing:'border-box',fontFamily:"'Crimson Pro',serif",
+                  fontSize:'1rem',lineHeight:1.6,padding:'.6rem .8rem',borderRadius:8,
+                  border:'1px solid rgba(0,0,0,0.3)',background:'rgba(255,255,255,0.35)',
+                  color:'rgba(0,0,0,0.85)',outline:'none',resize:'vertical'}}/>
+              <div style={{display:'flex',gap:'.55rem',justifyContent:'center',marginTop:'.7rem',flexWrap:'wrap'}}>
+                {!graded ? (
+                  <button onClick={()=>setGraded(sqGrade(attempt, rest))}
+                    disabled={!attempt.trim()}
+                    style={{...sqBtn,opacity:attempt.trim()?1:.4,
+                      cursor:attempt.trim()?'pointer':'default'}}>
+                    Check
+                  </button>
+                ) : (
+                  <button onClick={()=>{ setAttempt(''); setGraded(null); }} style={sqBtnGhost}>
+                    Try Again
+                  </button>
+                )}
+              </div>
+              {graded && (
+                <div style={{marginTop:'.9rem'}}>
+                  <div style={{fontFamily:"'Cinzel',serif",fontSize:'.68rem',letterSpacing:'.1em',
+                    color:'rgba(0,0,0,0.6)',marginBottom:'.5rem'}}>
+                    {graded.ok} / {graded.total} words
+                    {graded.extra>0 ? ' · ' + graded.extra + ' extra word' + (graded.extra>1?'s':'') : ''}
+                    {graded.ok===graded.total && graded.extra===0 ? ' · ✦ Perfect' : ''}
+                  </div>
+                  <div style={{fontSize:'1.05rem',lineHeight:1.8}}>
+                    {graded.marks.map((mk,mi)=>(
+                      <span key={mi} style={{
+                        color: mk.s==='ok' ? '#0a5c26' : '#8f1010',
+                        fontWeight: mk.s==='ok' ? 600 : 700,
+                        textDecoration: mk.s==='ok' ? 'none' : 'underline',
+                        textDecorationStyle: 'wavy'}}>
+                        {mk.w}{' '}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* Show Answer / revealed */}
         {!revealed ? (
           <div style={{textAlign:'center',marginBottom:'1rem'}}>
@@ -24082,12 +24424,12 @@ function SituationQuotationsPage({ onBack }){
         )}
         {/* Navigation — always at bottom */}
         <div style={{display:'flex',gap:'.8rem',justifyContent:'center',marginTop:'1rem',flexWrap:'wrap'}}>
-          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);sqReset();}}}
             disabled={qIdx===0}
             style={{...sqBtnGhost,opacity:qIdx===0?.35:1,cursor:qIdx===0?'default':'pointer'}}>
             ← Prev
           </button>
-          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);sqReset();}}}
             disabled={qIdx>=quotations.length-1}
             style={{...sqBtn,opacity:qIdx>=quotations.length-1?.35:1,cursor:qIdx>=quotations.length-1?'default':'pointer'}}>
             Next →
@@ -24471,7 +24813,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -24488,6 +24830,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -24538,11 +24881,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -24550,7 +24893,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -24559,12 +24902,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -24595,11 +24942,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -24622,7 +24971,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -24728,7 +25077,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -24744,6 +25093,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -24763,11 +25117,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -27479,7 +27833,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -27490,6 +27844,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -27498,6 +27857,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -30629,6 +30989,9 @@ function SituationQuotationsPage({ onBack }){
   const [quotations, setQuotations] = useState([]);
   const [qIdx, setQIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [typeMode, setTypeMode] = useState(false);
+  const [attempt, setAttempt] = useState('');
+  const [graded, setGraded] = useState(null);
   React.useEffect(()=>{
     if(window.BgMgr) window.BgMgr.setSituationMode(true);
     return ()=>{ if(window.BgMgr) window.BgMgr.setSituationMode(false); };
@@ -30781,6 +31144,37 @@ function SituationQuotationsPage({ onBack }){
     }
     return quote;
   }
+  /* ── Finish-the-Quote helpers ── */
+  function sqNormWord(w){ return (w||'').toLowerCase().replace(/[\u2019]/g,"'").replace(/[^a-z0-9']/g,''); }
+  function sqWords(s){ return (s||'').trim().split(/\s+/).filter(Boolean); }
+  /* The remainder is the full quote minus the prefix already shown. */
+  function sqRemainder(qq){
+    if(!qq) return '';
+    const shown = sqWords(qq.uniquePoint).length;
+    return sqWords(qq.fullQuote).slice(shown).join(' ');
+  }
+  /* LCS alignment so one missing word doesn't mark everything after it wrong. */
+  function sqGrade(userText, expectedText){
+    const uw = sqWords(userText), ew = sqWords(expectedText);
+    const nu = uw.map(sqNormWord), ne = ew.map(sqNormWord);
+    const m = nu.length, n = ne.length;
+    const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+    for(let i=m-1;i>=0;i--){
+      for(let j=n-1;j>=0;j--){
+        dp[i][j] = nu[i]===ne[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    const marks = []; let i=0, j=0, extra=0;
+    while(i<m && j<n){
+      if(nu[i]===ne[j]){ marks.push({w:ew[j], s:'ok'}); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]){ i++; extra++; }
+      else { marks.push({w:ew[j], s:'miss'}); j++; }
+    }
+    while(j<n){ marks.push({w:ew[j], s:'miss'}); j++; }
+    while(i<m){ i++; extra++; }
+    return {marks, ok: marks.filter(x=>x.s==='ok').length, total: n, extra};
+  }
+  function sqReset(){ setAttempt(''); setGraded(null); setRevealed(false); }
   const allChapters = CHAPTERS_DATA.map(cd=>cd.ch);
   function startBrowse(){
     const qs = buildQuotations(selChs);
@@ -30788,6 +31182,7 @@ function SituationQuotationsPage({ onBack }){
     setQuotations(qs);
     setQIdx(0);
     setRevealed(false);
+    setAttempt(''); setGraded(null);
     setPhase('browse');
   }
   // Count quotes quickly for setup screen
@@ -30918,6 +31313,74 @@ function SituationQuotationsPage({ onBack }){
             …
           </div>
         </div>
+        {/* Finish the Quote — optional typing mode */}
+        <div style={{textAlign:'center',marginBottom:'.9rem'}}>
+          <button onClick={()=>{ setTypeMode(t=>!t); setAttempt(''); setGraded(null); }}
+            style={{...sqBtnGhost,fontSize:'.68rem',padding:'.32rem 1rem'}}>
+            {typeMode ? '👁 Browse only' : '✍ Finish the quote'}
+          </button>
+        </div>
+        {typeMode && (()=>{
+          const rest = sqRemainder(q);
+          if(!rest){
+            return (
+              <div style={{...sqCard,textAlign:'center'}}>
+                <div style={{fontStyle:'italic',fontSize:'.9rem',color:'rgba(0,0,0,0.5)'}}>
+                  This quote is shown in full — there is nothing left to finish.
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div style={sqCard}>
+              <div style={sqLabel}>FINISH THE QUOTE</div>
+              <textarea value={attempt} onChange={e=>setAttempt(e.target.value)}
+                disabled={!!graded} rows={3}
+                placeholder="Type the rest of the quote…"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                onKeyDown={e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); if(!graded) setGraded(sqGrade(attempt, rest)); } }}
+                style={{width:'100%',boxSizing:'border-box',fontFamily:"'Crimson Pro',serif",
+                  fontSize:'1rem',lineHeight:1.6,padding:'.6rem .8rem',borderRadius:8,
+                  border:'1px solid rgba(0,0,0,0.3)',background:'rgba(255,255,255,0.35)',
+                  color:'rgba(0,0,0,0.85)',outline:'none',resize:'vertical'}}/>
+              <div style={{display:'flex',gap:'.55rem',justifyContent:'center',marginTop:'.7rem',flexWrap:'wrap'}}>
+                {!graded ? (
+                  <button onClick={()=>setGraded(sqGrade(attempt, rest))}
+                    disabled={!attempt.trim()}
+                    style={{...sqBtn,opacity:attempt.trim()?1:.4,
+                      cursor:attempt.trim()?'pointer':'default'}}>
+                    Check
+                  </button>
+                ) : (
+                  <button onClick={()=>{ setAttempt(''); setGraded(null); }} style={sqBtnGhost}>
+                    Try Again
+                  </button>
+                )}
+              </div>
+              {graded && (
+                <div style={{marginTop:'.9rem'}}>
+                  <div style={{fontFamily:"'Cinzel',serif",fontSize:'.68rem',letterSpacing:'.1em',
+                    color:'rgba(0,0,0,0.6)',marginBottom:'.5rem'}}>
+                    {graded.ok} / {graded.total} words
+                    {graded.extra>0 ? ' · ' + graded.extra + ' extra word' + (graded.extra>1?'s':'') : ''}
+                    {graded.ok===graded.total && graded.extra===0 ? ' · ✦ Perfect' : ''}
+                  </div>
+                  <div style={{fontSize:'1.05rem',lineHeight:1.8}}>
+                    {graded.marks.map((mk,mi)=>(
+                      <span key={mi} style={{
+                        color: mk.s==='ok' ? '#0a5c26' : '#8f1010',
+                        fontWeight: mk.s==='ok' ? 600 : 700,
+                        textDecoration: mk.s==='ok' ? 'none' : 'underline',
+                        textDecorationStyle: 'wavy'}}>
+                        {mk.w}{' '}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* Show Answer / revealed */}
         {!revealed ? (
           <div style={{textAlign:'center',marginBottom:'1rem'}}>
@@ -30938,12 +31401,12 @@ function SituationQuotationsPage({ onBack }){
         )}
         {/* Navigation — always at bottom */}
         <div style={{display:'flex',gap:'.8rem',justifyContent:'center',marginTop:'1rem',flexWrap:'wrap'}}>
-          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx>0){setQIdx(qIdx-1);sqReset();}}}
             disabled={qIdx===0}
             style={{...sqBtnGhost,opacity:qIdx===0?.35:1,cursor:qIdx===0?'default':'pointer'}}>
             ← Prev
           </button>
-          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);setRevealed(false);}}}
+          <button onClick={()=>{if(qIdx<quotations.length-1){setQIdx(qIdx+1);sqReset();}}}
             disabled={qIdx>=quotations.length-1}
             style={{...sqBtn,opacity:qIdx>=quotations.length-1?.35:1,cursor:qIdx>=quotations.length-1?'default':'pointer'}}>
             Next →
@@ -31327,7 +31790,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -31344,6 +31807,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -31394,11 +31858,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -31406,7 +31870,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -31415,12 +31879,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -31451,11 +31919,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -31478,7 +31948,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -31584,7 +32054,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -31600,6 +32070,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -31619,11 +32094,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -34459,7 +34934,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -34470,6 +34945,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -34478,6 +34958,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -38168,7 +38649,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -38185,6 +38666,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -38235,11 +38717,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -38247,7 +38729,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -38256,12 +38738,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -38292,11 +38778,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -38319,7 +38807,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -38422,7 +38910,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -38438,6 +38926,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -38457,11 +38950,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -41081,7 +41574,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -41092,6 +41585,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -41100,6 +41598,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -44775,7 +45274,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -44792,6 +45291,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -44842,11 +45342,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -44854,7 +45354,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -44863,12 +45363,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -44899,11 +45403,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -44926,7 +45432,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -45029,7 +45535,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -45045,6 +45551,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -45064,11 +45575,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -47622,7 +48133,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -47633,6 +48144,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -47641,6 +48157,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -51052,7 +51569,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -51069,6 +51586,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -51119,11 +51637,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -51131,7 +51649,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -51140,12 +51658,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -51176,11 +51698,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -51203,7 +51727,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -51306,7 +51830,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -51322,6 +51846,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -51341,11 +51870,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -54155,7 +54684,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -54166,6 +54695,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
+      {refMode ? (
+        <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
+          {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
+        </span>
+      ) : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -54174,6 +54708,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked}){
           data-bkey={vnKey} data-correct={String(verse.v)} data-ch={ch} placeholder="#" title="Verse number"/>
         {vnBad&&checked&&<span className="hint-ans" style={{fontSize:'.65rem'}}>({verse.v})</span>}
       </span>
+      )}
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
@@ -57854,7 +58389,7 @@ function MoreToolsPage({ onBack, onKeywords, onStudy, onRefMatch, onDrag, onSect
             onClick={function(){ window.wardifyOpenSettings && window.wardifyOpenSettings(); }}>
             <div className="tool-card-icon">⚙️</div>
             <div className="tool-card-name">Settings</div>
-            <div className="tool-card-desc">Theme, backgrounds, material &amp; offline download</div>
+            <div className="tool-card-desc">Theme, backgrounds &amp; study material</div>
           </div>
           </div>
         </div>
@@ -57871,6 +58406,7 @@ function App({ onScore }){
   const [level,setLevel]=useState(null);
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
+  const [modeRef,setModeRef]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -57921,11 +58457,11 @@ function App({ onScore }){
     return out;
   },[sChIdx,sV,eChIdx,eV,customVerses]);
   const displayVerses=useMemo(()=>{
-    if(modeSpecialty && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
+    if((modeSpecialty||modeRef) && selVerses.length>0) return shuffleArr(selVerses, makeRng(quizSeed));
     return selVerses;
-  },[selVerses, modeSpecialty, quizSeed]);
+  },[selVerses, modeSpecialty, modeRef, quizSeed]);
   const byChapter=useMemo(()=>{
-    if(modeSpecialty) return null;
+    if(modeSpecialty||modeRef) return null;
     const map=[];
     displayVerses.forEach(v=>{
       const last=map[map.length-1];
@@ -57933,7 +58469,7 @@ function App({ onScore }){
       else map.push({ch:v.ch,verses:[v]});
     });
     return map;
-  },[displayVerses,modeSpecialty]);
+  },[displayVerses,modeSpecialty,modeRef]);
   const segOpts=useMemo(()=>({
     seed: modeRandom ? quizSeed : null,
     specialty: modeSpecialty,
@@ -57942,12 +58478,16 @@ function App({ onScore }){
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   function toggleRandom(){
-    if(!modeRandom) setModeSpecialty(false);
+    if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty) setModeRandom(false);
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
     setModeSpecialty(v=>!v); reset();
+  }
+  function toggleRef(){
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    setModeRef(v=>!v); reset();
   }
   function goSCh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
@@ -57978,11 +58518,13 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      tot++; verseBlanks++;
-      const vnKey=`${verse.ch}-${verse.v}-vnum`;
-      const vnOk=norm(ans[vnKey])===String(verse.v);
-      if(vnOk){ c++; verseCorrect++; }
-      if(hinted[vnKey]) verseHinted=true;
+      if(!modeRef){
+        tot++; verseBlanks++;
+        const vnKey=`${verse.ch}-${verse.v}-vnum`;
+        const vnOk=norm(ans[vnKey])===String(verse.v);
+        if(vnOk){ c++; verseCorrect++; }
+        if(hinted[vnKey]) verseHinted=true;
+      }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
       buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
@@ -58005,7 +58547,7 @@ function App({ onScore }){
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
   const sCh=CHAPTERS_DATA[sChIdx], eCh=CHAPTERS_DATA[eChIdx];
-  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : '';
+  const modeTag = modeRandom ? ' · 🎲 Random' : modeSpecialty ? ' · ⭐ Specialty' : modeRef ? ' · 🔖 Reference' : '';
   if(page === 'custom'){
     return <CustomPicker
       onBack={()=>setPage('main')}
@@ -58108,7 +58650,7 @@ function App({ onScore }){
       </div>
       {selVerses.length>0 && <>
         <div className="level-bar" style={{marginTop:'1rem'}}>
-          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); reset(); }}>📖 Read</button>
+          <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
             <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
           ))}
@@ -58124,6 +58666,11 @@ function App({ onScore }){
               <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
+            </label>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+              <span className="mode-icon">🔖</span> Reference
+              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
           </div>
         )}
@@ -58143,11 +58690,11 @@ function App({ onScore }){
         {level!==null && (
           <div className="kbd-tips"><kbd>Space</kbd> = next blank &nbsp;·&nbsp; <kbd>Ctrl+H</kbd> = hint next word</div>
         )}
-        {modeSpecialty && level!==null
+        {(modeSpecialty||modeRef) && level!==null
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -58674,13 +59221,6 @@ window.wardifyOpenSettings = function(){
       booksEl.appendChild(btn);
     });
   }
-  var pwEl = document.getElementById('wfy-s-pw');
-  var pwMsg = document.getElementById('wfy-s-pw-msg');
-  if(pwEl) pwEl.value = '';
-  if(pwMsg){ pwMsg.textContent=''; pwMsg.className='wfy-s-pw-msg'; }
-  var pwBtn = document.getElementById('wfy-s-pw-btn');
-  if(pwBtn) pwBtn.onclick = wfyDownload;
-  if(pwEl) pwEl.onkeydown = function(e){ if(e.key==='Enter') wfyDownload(); };
   document.getElementById('wfy-settings-overlay').classList.add('open');
 };
 /* Close on backdrop click */
@@ -58688,29 +59228,6 @@ window.wardifyOpenSettings = function(){
   var ov = document.getElementById('wfy-settings-overlay');
   if(ov) ov.addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); });
 })();
-/* Download */
-function wfyDownload(){
-  var pwEl = document.getElementById('wfy-s-pw');
-  var pwMsg = document.getElementById('wfy-s-pw-msg');
-  var pw = (pwEl?pwEl.value:'').toLowerCase().trim();
-  if(pw !== 'offline'){
-    if(pwMsg){ pwMsg.textContent='Incorrect password.'; pwMsg.className='wfy-s-pw-msg err'; }
-    return;
-  }
-  if(pwMsg){ pwMsg.textContent='Preparing download\u2026'; pwMsg.className='wfy-s-pw-msg'; }
-  try{
-    var blob = new Blob([document.documentElement.outerHTML],{type:'text/html'});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'Wardify.html';
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 600);
-    if(pwMsg){ pwMsg.textContent='Download started!'; pwMsg.className='wfy-s-pw-msg ok'; }
-    setTimeout(function(){ if(pwMsg) pwMsg.textContent=''; }, 3500);
-  } catch(ex){
-    if(pwMsg){ pwMsg.textContent='Error: '+ex.message; pwMsg.className='wfy-s-pw-msg err'; }
-  }
-}
 /* Track current book; apply settings after each activation (no overhead wrapper) */
 var _orig_activateBook = activateBook;
 activateBook = function(bookId){
@@ -58753,7 +59270,7 @@ window.wardifyShowInfo = function(){
     { title: 'Situation Quotations', icon: '🌱', body: 'Focuses on unique opening phrases of spoken words. Given a quote opening, identify who said it or which chapter it belongs to.' },
     { title: 'Answer Judge Material', icon: '⚖️', body: 'Context reader for detailed comprehension. Browse by chapter and verse — the selected verse glows, surrounding verses are dimmed. Search any word to find all matches; click a result to jump straight there. Shows 5 verses of context in each direction.' },
     { title: 'Head to Head', icon: '⚔️', body: 'Two players on one device. Choose material (Chapter, Range, or Custom), then pick a game. Keyword Blitz: a keyword appears with a blank verse; buzz in first and fill in the surrounding words in 30 sec + 2 sec per word; wrong answers give the other player a correction chance; best of 9. Sorting Race: 5 items at a time, tap to select then tap a chapter basket to place; every correct set earns 1 point in 60 seconds each; no feedback on wrong placements. Stumped You!: Player 1 picks a keyword, 2-word, or 3-word phrase for Player 2 to chapter-match; correct = 1 pt for P2, wrong = 2 pts for P1; first to 10 wins.' },
-    { title: 'Settings', icon: '⚙️', body: 'Toggle animated backgrounds and light mode. Switch books. Download the full app as a standalone offline HTML file (password required). Access this Info page.' },
+    { title: 'Settings', icon: '⚙️', body: 'Toggle animated backgrounds and light mode. Switch books. Access this Info page.' },
   ];
   var html = '<div style="font-family:\'Cinzel\',serif;font-size:1.1rem;letter-spacing:.1em;color:#c9a84c;text-align:center;margin-bottom:1.4rem;">ℹ️  Wardify — Info</div>';
   sections.forEach(function(s){
