@@ -839,25 +839,20 @@ window.wardifyLogScore = (function(){
         reason = 'No perfectly completed verses (a verse must have every blank correct and no hints used)';
       }
     }
-    var lim = getEffectiveLimits();
-    var dailySoFar = getDailyPoints('mainframe');
-    var dailyTotal = getDailyPointsTotal();
-    var remainingTool = Math.max(0, lim.tool - dailySoFar);
-    var remainingUser = Math.max(0, lim.user - dailyTotal);
-    var remaining = Math.min(remainingTool, remainingUser);
+    // Mainframe is UNCAPPED. Points are awarded in full.
+    // The one-credit-per-verse-per-day rule above still applies and is
+    // what limits repeat scoring — see verseUsedToday()/markVerseUsed().
     var rawPts = Math.round(pts * 100) / 100;
-    pts = Math.min(rawPts, remaining);
-    pts = Math.round(pts * 100) / 100;
+    pts = rawPts;
     if(!reason){
-      if(rawPts > 0 && pts < rawPts){
-        var capType = remainingTool < remainingUser ? 'tool cap ('+lim.tool+'/day)' : 'user cap ('+lim.user+'/day total)';
-        reason = 'Capped by ' + capType + '. Earned ' + pts + ' of ' + rawPts + ' eligible.';
-      } else if(rawPts === 0 && duplicateVerses > 0){
+      if(rawPts === 0 && duplicateVerses > 0){
         reason = 'All ' + duplicateVerses + ' perfect verses already scored today (one credit per verse per day)';
       } else if(pts > 0){
         reason = 'Scored ' + creditedVerses + ' verse' + (creditedVerses===1?'':'s');
       }
     }
+    // Still tracked so the daily tally stays accurate and a cap can be
+    // reinstated later without any other change.
     if(pts > 0) addDailyPoints('mainframe', pts);
     queueScore({
       _ts: Date.now(),
@@ -3088,7 +3083,7 @@ const KEY_WORDS = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
       const vk = cd.ch+'-'+verse.v;
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(!core) return;
         if(!map[core]) map[core]=new Set();
@@ -3105,7 +3100,7 @@ const KEYWORD_TO_CHAPTER = (()=>{
   const result = {};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(KEY_WORDS.has(core)) result[core] = cd.ch;
       });
@@ -3124,7 +3119,7 @@ const VERSE_UNIQUE_PREFIX = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(v=>{
       const key = `${cd.ch}-${v.v}`;
-      const words = v.t.split(' ').map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
+      const words = v.t.split(/[\s\u2014\u2013]+/).map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       allVerses.push({key, words});
     });
   });
@@ -3148,7 +3143,7 @@ function buildPhraseMap(n){
   const map={};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      const raw=verse.t.split(/\s+/);
+      const raw=verse.t.split(/[\s\u2014\u2013]+/);
       const clean=raw.map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       for(let i=0;i<=clean.length-n;i++){
         const gram=clean.slice(i,i+n).join(' ');
@@ -3229,7 +3224,30 @@ function shuffleArr(arr, rng){
 function buildSegs(text, level, opts={}){
   const {seed, specialty, uniquePrefix} = opts;
   const useRandom = seed != null;
-  const words = text.split(' ');
+  // Split on em/en dashes as well as spaces, keeping the dash attached to
+  // the word on its LEFT so the verse still reads correctly.
+  // ASCII hyphen U+002D is deliberately NOT in this class, so
+  // "seventy-five" and "God-fearing" remain single words.
+  const words = (function(){
+    const DASH=/[\u2013\u2014\u2015]/, WORDCH=/[a-zA-Z0-9]/, out=[];
+    text.split(' ').forEach(function(tok){
+      if(!DASH.test(tok)){ out.push(tok); return; }
+      let buf='';
+      for(let k=0;k<tok.length;k++){
+        buf+=tok[k];
+        // Break where there is a word character on BOTH sides of the dash
+        // somewhere in the token. This catches "Lord\u2014Jesus" and also
+        // "origin'\u2014we", where a closing quote sits against the dash.
+        // A leading or trailing stray dash has no word char on one side,
+        // so it is left alone.
+        if(DASH.test(tok[k]) && WORDCH.test(buf) && WORDCH.test(tok.slice(k+1))){
+          out.push(buf); buf='';
+        }
+      }
+      if(buf) out.push(buf);
+    });
+    return out;
+  })();
   const protectedPfx = new Set();
   if(specialty){
     const protectN = uniquePrefix ?? 5;
@@ -11032,7 +11050,7 @@ const KEY_WORDS = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
       const vk = cd.ch+'-'+verse.v;
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(!core) return;
         if(!map[core]) map[core]=new Set();
@@ -11049,7 +11067,7 @@ const KEYWORD_TO_CHAPTER = (()=>{
   const result = {};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(KEY_WORDS.has(core)) result[core] = cd.ch;
       });
@@ -11068,7 +11086,7 @@ const VERSE_UNIQUE_PREFIX = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(v=>{
       const key = `${cd.ch}-${v.v}`;
-      const words = v.t.split(' ').map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
+      const words = v.t.split(/[\s\u2014\u2013]+/).map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       allVerses.push({key, words});
     });
   });
@@ -11092,7 +11110,7 @@ function buildPhraseMap(n){
   const map={};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      const raw=verse.t.split(/\s+/);
+      const raw=verse.t.split(/[\s\u2014\u2013]+/);
       const clean=raw.map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       for(let i=0;i<=clean.length-n;i++){
         const gram=clean.slice(i,i+n).join(' ');
@@ -11173,7 +11191,30 @@ function shuffleArr(arr, rng){
 function buildSegs(text, level, opts={}){
   const {seed, specialty, uniquePrefix} = opts;
   const useRandom = seed != null;
-  const words = text.split(' ');
+  // Split on em/en dashes as well as spaces, keeping the dash attached to
+  // the word on its LEFT so the verse still reads correctly.
+  // ASCII hyphen U+002D is deliberately NOT in this class, so
+  // "seventy-five" and "God-fearing" remain single words.
+  const words = (function(){
+    const DASH=/[\u2013\u2014\u2015]/, WORDCH=/[a-zA-Z0-9]/, out=[];
+    text.split(' ').forEach(function(tok){
+      if(!DASH.test(tok)){ out.push(tok); return; }
+      let buf='';
+      for(let k=0;k<tok.length;k++){
+        buf+=tok[k];
+        // Break where there is a word character on BOTH sides of the dash
+        // somewhere in the token. This catches "Lord\u2014Jesus" and also
+        // "origin'\u2014we", where a closing quote sits against the dash.
+        // A leading or trailing stray dash has no word char on one side,
+        // so it is left alone.
+        if(DASH.test(tok[k]) && WORDCH.test(buf) && WORDCH.test(tok.slice(k+1))){
+          out.push(buf); buf='';
+        }
+      }
+      if(buf) out.push(buf);
+    });
+    return out;
+  })();
   const protectedPfx = new Set();
   if(specialty){
     const protectN = uniquePrefix ?? 5;
@@ -19763,7 +19804,7 @@ const KEY_WORDS = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
       const vk = cd.ch+'-'+verse.v;
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(!core) return;
         if(!map[core]) map[core]=new Set();
@@ -19780,7 +19821,7 @@ const KEYWORD_TO_CHAPTER = (()=>{
   const result = {};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(KEY_WORDS.has(core)) result[core] = cd.ch;
       });
@@ -19802,7 +19843,7 @@ const VERSE_UNIQUE_PREFIX = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(v=>{
       const key = `${cd.ch}-${v.v}`;
-      const words = v.t.split(' ').map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
+      const words = v.t.split(/[\s\u2014\u2013]+/).map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       allVerses.push({key, words});
     });
   });
@@ -19826,7 +19867,7 @@ function buildPhraseMap(n){
   const map={};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      const raw=verse.t.split(/\s+/);
+      const raw=verse.t.split(/[\s\u2014\u2013]+/);
       const clean=raw.map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       for(let i=0;i<=clean.length-n;i++){
         const gram=clean.slice(i,i+n).join(' ');
@@ -19907,7 +19948,30 @@ function shuffleArr(arr, rng){
 function buildSegs(text, level, opts={}){
   const {seed, specialty, uniquePrefix} = opts;
   const useRandom = seed != null;
-  const words = text.split(' ');
+  // Split on em/en dashes as well as spaces, keeping the dash attached to
+  // the word on its LEFT so the verse still reads correctly.
+  // ASCII hyphen U+002D is deliberately NOT in this class, so
+  // "seventy-five" and "God-fearing" remain single words.
+  const words = (function(){
+    const DASH=/[\u2013\u2014\u2015]/, WORDCH=/[a-zA-Z0-9]/, out=[];
+    text.split(' ').forEach(function(tok){
+      if(!DASH.test(tok)){ out.push(tok); return; }
+      let buf='';
+      for(let k=0;k<tok.length;k++){
+        buf+=tok[k];
+        // Break where there is a word character on BOTH sides of the dash
+        // somewhere in the token. This catches "Lord\u2014Jesus" and also
+        // "origin'\u2014we", where a closing quote sits against the dash.
+        // A leading or trailing stray dash has no word char on one side,
+        // so it is left alone.
+        if(DASH.test(tok[k]) && WORDCH.test(buf) && WORDCH.test(tok.slice(k+1))){
+          out.push(buf); buf='';
+        }
+      }
+      if(buf) out.push(buf);
+    });
+    return out;
+  })();
   const protectedPfx = new Set();
   if(specialty){
     const protectN = uniquePrefix ?? 5;
@@ -26768,7 +26832,7 @@ const KEY_WORDS = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
       const vk = cd.ch+'-'+verse.v;
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(!core) return;
         if(!map[core]) map[core]=new Set();
@@ -26785,7 +26849,7 @@ const KEYWORD_TO_CHAPTER = (()=>{
   const result = {};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      verse.t.split(/\s+/).forEach(w=>{
+      verse.t.split(/[\s\u2014\u2013]+/).forEach(w=>{
         const core = w.replace(/[^a-zA-Z]/g,'').toLowerCase();
         if(KEY_WORDS.has(core)) result[core] = cd.ch;
       });
@@ -26821,7 +26885,7 @@ const VERSE_UNIQUE_PREFIX = (()=>{
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(v=>{
       const key = `${cd.ch}-${v.v}`;
-      const words = v.t.split(' ').map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
+      const words = v.t.split(/[\s\u2014\u2013]+/).map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       allVerses.push({key, words});
     });
   });
@@ -26845,7 +26909,7 @@ function buildPhraseMap(n){
   const map={};
   CHAPTERS_DATA.forEach(cd=>{
     cd.verses.forEach(verse=>{
-      const raw=verse.t.split(/\s+/);
+      const raw=verse.t.split(/[\s\u2014\u2013]+/);
       const clean=raw.map(w=>w.replace(/[^a-zA-Z]/g,'').toLowerCase()).filter(Boolean);
       for(let i=0;i<=clean.length-n;i++){
         const gram=clean.slice(i,i+n).join(' ');
@@ -26926,7 +26990,30 @@ function shuffleArr(arr, rng){
 function buildSegs(text, level, opts={}){
   const {seed, specialty, uniquePrefix} = opts;
   const useRandom = seed != null;
-  const words = text.split(' ');
+  // Split on em/en dashes as well as spaces, keeping the dash attached to
+  // the word on its LEFT so the verse still reads correctly.
+  // ASCII hyphen U+002D is deliberately NOT in this class, so
+  // "seventy-five" and "God-fearing" remain single words.
+  const words = (function(){
+    const DASH=/[\u2013\u2014\u2015]/, WORDCH=/[a-zA-Z0-9]/, out=[];
+    text.split(' ').forEach(function(tok){
+      if(!DASH.test(tok)){ out.push(tok); return; }
+      let buf='';
+      for(let k=0;k<tok.length;k++){
+        buf+=tok[k];
+        // Break where there is a word character on BOTH sides of the dash
+        // somewhere in the token. This catches "Lord\u2014Jesus" and also
+        // "origin'\u2014we", where a closing quote sits against the dash.
+        // A leading or trailing stray dash has no word char on one side,
+        // so it is left alone.
+        if(DASH.test(tok[k]) && WORDCH.test(buf) && WORDCH.test(tok.slice(k+1))){
+          out.push(buf); buf='';
+        }
+      }
+      if(buf) out.push(buf);
+    });
+    return out;
+  })();
   const protectedPfx = new Set();
   if(specialty){
     const protectN = uniquePrefix ?? 5;
