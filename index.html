@@ -3298,6 +3298,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -11265,6 +11281,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -20022,6 +20054,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -27064,6 +27112,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -34165,6 +34229,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -40805,6 +40885,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -47364,6 +47460,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
@@ -53915,6 +54027,22 @@ function buildSegs(text, level, opts={}){
   });
 }
 function onSpace(e){
+  // Backspace in an EMPTY blank moves focus to the previous blank.
+  // If the box has any text, fall through to the browser's normal delete.
+  if(e.key==='Backspace'){
+    if(e.target.value !== '') return;
+    const prevAll=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
+    const pi=prevAll.indexOf(e.target);
+    if(pi>0){
+      e.preventDefault();
+      const prev=prevAll[pi-1];
+      prev.focus();
+      // Caret to the end, so a second Backspace deletes that box's last
+      // character rather than jumping again from position 0.
+      try { prev.setSelectionRange(prev.value.length, prev.value.length); } catch(_){}
+    }
+    return;
+  }
   if(e.key!==' ') return;
   e.preventDefault();
   const all=Array.from(document.querySelectorAll('input.blank:not([disabled])'));
