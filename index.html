@@ -4222,7 +4222,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -4233,7 +4233,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -8324,6 +8324,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -8400,8 +8401,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -8435,7 +8439,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -8587,6 +8591,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -8614,7 +8625,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -12153,7 +12164,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -12164,7 +12175,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -16121,6 +16132,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -16197,8 +16209,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -16232,7 +16247,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -16384,6 +16399,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -16411,7 +16433,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -20926,7 +20948,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -20937,7 +20959,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -24943,6 +24965,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -25019,8 +25042,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -25054,7 +25080,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -25206,6 +25232,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -25233,7 +25266,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -27984,7 +28017,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -27995,7 +28028,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -31959,6 +31992,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -32035,8 +32069,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -32070,7 +32107,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -32222,6 +32259,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -32249,7 +32293,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -35101,7 +35145,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -35112,7 +35156,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -38834,6 +38878,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -38910,8 +38955,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -38945,7 +38993,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -39094,6 +39142,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -39121,7 +39176,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -41757,7 +41812,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -41768,7 +41823,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -45475,6 +45530,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -45551,8 +45607,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -45586,7 +45645,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -45735,6 +45794,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -45762,7 +45828,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -48332,7 +48398,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -48343,7 +48409,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -51786,6 +51852,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -51862,8 +51929,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -51897,7 +51967,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -52046,6 +52116,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -52073,7 +52150,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -54899,7 +54976,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -54910,7 +54987,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {refMode ? (
+      {hideVnum ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -58622,6 +58699,7 @@ function App({ onScore }){
   const [modeRandom,setModeRandom]=useState(false);
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
+  const [hideRefs,setHideRefs]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -58698,8 +58776,11 @@ function App({ onScore }){
   }
   function toggleSpecialty(){
     if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
+  // Only ever true while Specialty is on, whatever hideRefs happens to hold.
+  const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
     if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
     setModeRef(v=>!v); reset();
@@ -58733,7 +58814,7 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef){
+      if(!modeRef && !hideVnums){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -58882,6 +58963,13 @@ function App({ onScore }){
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
+            {modeSpecialty && (
+              <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
+                <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
+                <span className="mode-icon">🙈</span> Hide refs
+                <span className="mode-tip">Removes the verse-number boxes entirely</span>
+              </label>
+            )}
             <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
               <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
@@ -58909,7 +58997,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
