@@ -8395,6 +8395,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -8414,22 +8420,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -16203,6 +16209,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -16222,22 +16234,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -25036,6 +25048,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -25055,22 +25073,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -32063,6 +32081,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -32082,22 +32106,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -38949,6 +38973,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -38968,22 +38998,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -45601,6 +45631,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -45620,22 +45656,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -51923,6 +51959,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -51942,22 +51984,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -58770,6 +58812,12 @@ function App({ onScore }){
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
   function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
+  // Narrowing or widening the passage must NOT discard typed answers.
+  // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
+  // verses still in range keep their text and the rest simply stop being
+  // rendered. The seed is kept on purpose: reseeding re-picks which words
+  // are blanked and would desync everything already entered.
+  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -58789,22 +58837,22 @@ function App({ onScore }){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length, sv=Math.min(sV,mx);
     setSChIdx(ni); setSV(sv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[ni].ch,sv)){setEChIdx(ni);setEV(mx);}
-    fullReset();
+    rangeChange();
   }
   function goSV(v){
     const nv=+v; setSV(nv);
     if(vkey(CHAPTERS_DATA[eChIdx].ch,eV)<vkey(CHAPTERS_DATA[sChIdx].ch,nv)){setEChIdx(sChIdx);setEV(CHAPTERS_DATA[sChIdx].verses.length);}
-    fullReset();
+    rangeChange();
   }
   function goECh(i){
     const ni=+i, mx=CHAPTERS_DATA[ni].verses.length;
     if(vkey(CHAPTERS_DATA[ni].ch,mx)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEChIdx(ni); setEV(Math.min(eV,mx)); fullReset();
+    setEChIdx(ni); setEV(Math.min(eV,mx)); rangeChange();
   }
   function goEV(v){
     const nv=+v;
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
-    setEV(nv); fullReset();
+    setEV(nv); rangeChange();
   }
   function check(){
     let c=0, tot=0;
@@ -59426,12 +59474,14 @@ function wfyApply(s){
       /* bg OFF + light ON = white bg, black text */
       document.documentElement.classList.add('theme-light');
       document.documentElement.setAttribute('data-wfy-forced','light');
+      document.documentElement.setAttribute('data-wfy-theme','light');
       document.body.style.backgroundColor = '#ffffff';
       document.body.style.color = '#111';
     } else {
       /* bg OFF + dark = black bg, white text */
       document.documentElement.classList.remove('theme-light');
       document.documentElement.setAttribute('data-wfy-forced','dark');
+      document.documentElement.setAttribute('data-wfy-theme','dark');
       document.body.style.backgroundColor = '#000000';
       document.body.style.color = '#fff';
     }
@@ -59439,10 +59489,12 @@ function wfyApply(s){
     /* Backgrounds ON — restore canvas layer */
     if(layer) layer.style.visibility = 'visible';
     document.documentElement.removeAttribute('data-wfy-forced');
+    document.documentElement.removeAttribute('data-wfy-theme');
     document.body.style.color = '';
     if(s.light){
       /* Force light theme override on top of animated bgs */
       document.documentElement.classList.add('theme-light');
+      document.documentElement.setAttribute('data-wfy-theme','light');
       document.body.style.backgroundColor = '#f5efe6';
     } else {
       /* Let BgMgr control theme per chapter */
@@ -59477,7 +59529,33 @@ function wfyApply(s){
     '[data-wfy-forced=light] .kq-page, [data-wfy-forced=light] .drag-page,' +
     '[data-wfy-forced=light] .lb-page { background:#fff!important; color:#111!important; }' +
     /* Ensure canvas bg-layer never bleeds through when hidden */
-    '#bg-layer { transition: visibility 0s; }';
+    '#bg-layer { transition: visibility 0s; }' +
+    /* ── Palette lock ──────────────────────────────────────────────
+       Same specificity as :root.theme-light (0,2,0); this stylesheet is
+       appended to <head> last, so it wins on document order. Keeps the
+       colours stable no matter what BgMgr does to theme-light when a
+       blank is focused. */
+    ':root[data-wfy-theme=dark]{' +
+      '--c-title:#f5e6c8;--c-body:#ddd5c4;--c-muted:#8a7d6a;--c-vmuted:#5a5248;' +
+      '--c-accent:#c9a227;--c-accent-a:rgba(201,162,39,.32);' +
+      '--c-card:rgba(0,0,0,.30);--c-border:rgba(255,255,255,.09);' +
+      '--c-sel:rgba(255,255,255,.06);--c-btn-text:#0d0b1e;' +
+      '--c-hint:#6dd48a;--c-input:rgba(255,255,255,.08);}' +
+    ':root[data-wfy-theme=light]{' +
+      '--c-title:#1a0e06;--c-body:#2a1c12;--c-muted:#5a3a22;--c-vmuted:#8a6040;' +
+      '--c-accent:#a06010;--c-accent-a:rgba(160,96,16,.28);' +
+      '--c-card:rgba(255,255,255,.58);--c-border:rgba(0,0,0,.13);' +
+      '--c-sel:rgba(0,0,0,.07);--c-btn-text:#0d0b1e;' +
+      '--c-hint:#1a6a38;--c-input:rgba(0,0,0,.09);}' +
+    /* Correct/incorrect shading needs to follow the locked palette too. */
+    ':root[data-wfy-theme=dark] input.blank.ok{background:rgba(80,200,120,.18);'+
+      'border-bottom-color:#50c878;color:#90e8a8;}' +
+    ':root[data-wfy-theme=dark] input.blank.bad{background:rgba(220,80,80,.18);'+
+      'border-bottom-color:#e05555;color:#e8a0a0;}' +
+    ':root[data-wfy-theme=light] input.blank.ok{background:rgba(40,160,80,.18);'+
+      'border-bottom-color:#30a860;color:#1a6030;}' +
+    ':root[data-wfy-theme=light] input.blank.bad{background:rgba(200,60,60,.15);'+
+      'border-bottom-color:#c04040;color:#8a2020;}';
   document.head.appendChild(el);
 })();
 /* ── Open settings modal ── */
