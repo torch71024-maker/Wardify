@@ -820,19 +820,19 @@ window.wardifyLogScore = (function(){
     var attempted = (perfectVerses || []).length;
     var creditedVerses = 0;
     var duplicateVerses = 0;
-    if(level !== 5){
-      reason = 'Points only awarded at Level 5 (current level ' + level + ')';
+    if(level !== 5 && level !== 6){
+      reason = 'Points only awarded at Levels 5 and 6 (current level ' + level + ')';
     } else {
       // Per-verse: 0.05 per blank, only if verse is perfect AND unhinted, once per verse per day.
       // Custom-verse selection and passage-range selection both count at the same rate.
       (perfectVerses || []).forEach(function(ref){
-        if(verseUsedToday('mainframe', ref)){
+        if(verseUsedToday('mainframe' + level, ref)){
           duplicateVerses++;
           return;
         }
         var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
         pts += blanks * 0.05;
-        markVerseUsed('mainframe', ref);
+        markVerseUsed('mainframe' + level, ref);
         creditedVerses++;
       });
       if(attempted === 0){
@@ -3264,6 +3264,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -3326,6 +3333,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="john">
@@ -4233,7 +4241,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -4250,6 +4258,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -8445,7 +8473,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -8454,12 +8483,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -11264,6 +11303,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -11326,6 +11372,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="acts">
@@ -12181,7 +12228,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -12198,6 +12245,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -16259,7 +16326,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -16268,12 +16336,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -20054,6 +20132,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -20116,6 +20201,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="matt">
@@ -20971,7 +21057,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -20988,6 +21074,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -25098,7 +25204,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -25107,12 +25214,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -27129,6 +27246,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -27191,6 +27315,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="luke">
@@ -28046,7 +28171,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -28063,6 +28188,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -32131,7 +32276,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -32140,12 +32286,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -34263,6 +34419,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -34325,6 +34488,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="cor">
@@ -35180,7 +35344,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -35197,6 +35361,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -39023,7 +39207,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -39032,12 +39217,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -40936,6 +41131,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -40998,6 +41200,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="gepc">
@@ -41853,7 +42056,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -41870,6 +42073,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -45681,7 +45904,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -45690,12 +45914,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -47528,6 +47762,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -47590,6 +47831,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="romjam">
@@ -48445,7 +48687,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -48462,6 +48704,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -52009,7 +52271,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -52018,12 +52281,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
@@ -54112,6 +54385,13 @@ function buildSegs(text, level, opts={}){
     if(level===2){ return useRandom ? (rng() < 0.50) : (poolIdx % 2 === 0); }
     return false;
   }
+  // Level 6: a single box for the ENTIRE verse. With no word boxes there is
+  // no word-count or word-length leak. `words` is the scorable word count,
+  // carried through so Level 6 earns at the same rate as Level 5.
+  if(level===6){
+    return [{type:'whole', core:text, idx:0,
+             words: words.filter(w=>parseWord(w).core).length}];
+  }
   if(level===5){
     return words.map((w,i)=>{
       if(!w.trim()) return {type:'text',value:w};
@@ -54174,6 +54454,7 @@ const LEVELS=[
   {label:'Level 3', desc:'All content words removed'},
   {label:'Level 4', desc:'Content words shown — fill in every grammar word'},
   {label:'Level 5', desc:'Every single word removed'},
+  {label:'Level 6', desc:'One box for the whole verse — no spaces to guide you'},
 ];
 </script>
 <script type="wardify/jsx" data-book="hebpet">
@@ -55029,7 +55310,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {hideVnum ? null : refMode ? (
+      {(hideVnum || level===6) ? null : refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -55046,6 +55327,26 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
       <span className="vtext">
         {segs.map((s,i)=>{
           if(s.type==='text') return <span key={i}>{s.value}{' '}</span>;
+          if(s.type==='whole'){
+            const wk=`${ch}-${verse.v}-0`;
+            const wval=ans[wk]||'';
+            const wOk=checked&&matchAnswer(wval,s.core);
+            const wBad=checked&&!wOk;
+            return (
+              <span key={i}>
+                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                  name={`q_${wk}`} placeholder="Type the whole verse…"
+                  style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                    fontSize:'1rem',lineHeight:1.7,padding:'.5rem .7rem',borderRadius:6,
+                    resize:'vertical',outline:'none',color:'var(--c-title)',
+                    background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                    border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
+                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+              </span>
+            );
+          }
           const k=`${ch}-${verse.v}-${s.idx}`;
           const val=ans[k]||'';
           const wasHinted=hinted[k];
@@ -58862,7 +59163,8 @@ function App({ onScore }){
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
-      if(!modeRef && !hideVnums){
+      // level is 0-based here: 5 means "Level 6", which has no verse-number box.
+      if(!modeRef && !hideVnums && level!==5){
         tot++; verseBlanks++;
         const vnKey=`${verse.ch}-${verse.v}-vnum`;
         const vnOk=norm(ans[vnKey])===String(verse.v);
@@ -58871,12 +59173,22 @@ function App({ onScore }){
       }
       const verseSeed=segOpts.seed!=null?hashSeed(segOpts.seed,`${verse.ch}-${verse.v}`):null;
       const uniquePrefix=VERSE_UNIQUE_PREFIX[`${verse.ch}-${verse.v}`]??5;
-      buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix}).filter(s=>s.type==='blank').forEach(s=>{
-        tot++; verseBlanks++;
-        const k=`${verse.ch}-${verse.v}-${s.idx}`;
-        if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
-        if(hinted[k]) verseHinted=true;
-      });
+      const vsegs=buildSegs(verse.t,level+1,{...segOpts,seed:verseSeed,uniquePrefix});
+      const whole=vsegs.find(s=>s.type==='whole');
+      if(whole){
+        // Level 6: one box, all or nothing. It counts as `words` blanks so
+        // the points rate matches Level 5. No hints are possible here.
+        const wk=`${verse.ch}-${verse.v}-0`;
+        tot+=whole.words; verseBlanks+=whole.words;
+        if(matchAnswer(ans[wk],whole.core)){ c+=whole.words; verseCorrect+=whole.words; }
+      } else {
+        vsegs.filter(s=>s.type==='blank').forEach(s=>{
+          tot++; verseBlanks++;
+          const k=`${verse.ch}-${verse.v}-${s.idx}`;
+          if(matchAnswer(ans[k],s.core)){ c++; verseCorrect++; }
+          if(hinted[k]) verseHinted=true;
+        });
+      }
       // Verse earns points only if all correct AND no hints
       if(verseCorrect===verseBlanks && !verseHinted){
         perfectVerses.push(ref);
