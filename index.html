@@ -4272,6 +4272,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -4279,11 +4282,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -8532,7 +8535,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -8728,7 +8733,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -8741,26 +8748,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -8804,7 +8812,7 @@ function App({ onScore }){
                   <div className="ch-heading">CHAPTER {ch}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -12363,6 +12371,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -12370,11 +12381,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -16489,7 +16500,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -16685,7 +16698,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -16698,26 +16713,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -16761,7 +16777,7 @@ function App({ onScore }){
                   <div className="ch-heading">CHAPTER {ch}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -21296,6 +21312,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -21303,11 +21322,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -25471,7 +25490,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -25667,7 +25688,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -25680,26 +25703,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -25743,7 +25767,7 @@ function App({ onScore }){
                   <div className="ch-heading">CHAPTER {ch}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -28514,6 +28538,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -28521,11 +28548,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -32647,7 +32674,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -32843,7 +32872,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -32856,26 +32887,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -32919,7 +32951,7 @@ function App({ onScore }){
                   <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -35791,6 +35823,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -35798,11 +35833,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -39682,7 +39717,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -39875,7 +39912,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -39888,26 +39927,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -39951,7 +39991,7 @@ function App({ onScore }){
                   <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -42607,6 +42647,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -42614,11 +42657,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -46483,7 +46526,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -46676,7 +46721,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -46689,26 +46736,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -46752,7 +46800,7 @@ function App({ onScore }){
                   <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -49342,6 +49390,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -49349,11 +49400,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -52954,7 +53005,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -53147,7 +53200,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -53160,26 +53215,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -53223,7 +53279,7 @@ function App({ onScore }){
                   <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -56069,6 +56125,9 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
+  // At Level 6 the verses are shuffled when Specialty is on, so the full
+  // reference has to be printed or the verse cannot be identified at all.
+  const l6ref = level===6 && !!segOpts.specialty;
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -56076,11 +56135,11 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(hideVnum || level===6) ? null : refMode ? (
+      {(refMode || l6ref) ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
-      ) : (
+      ) : (hideVnum || level===6) ? null : (
       <span className="vnum">
         <input className={'blank vnum-blank'+(vnOk?' ok':vnBad?' bad':'')} value={vnVal}
           onChange={e=>setAns(vnKey,e.target.value)} onKeyDown={onSpace} disabled={checked}
@@ -59950,7 +60009,9 @@ function App({ onScore }){
   // Only ever true while Specialty is on, whatever hideRefs happens to hold.
   const hideVnums = modeSpecialty && hideRefs;
   function toggleRef(){
-    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setLevel(4); }
+    // No longer jumps to Level 5 — Reference applies at the current level.
+    // Reference and Keywords are mutually exclusive.
+    if(!modeRef){ setModeRandom(false); setModeSpecialty(false); setKwMode(false); }
     setModeRef(v=>!v); reset();
   }
   function goSCh(i){
@@ -60143,7 +60204,9 @@ function App({ onScore }){
               setLevel(i);
               // Level 6 (index 5) has no word blanks, so Random, Specialty and
               // Hide refs cannot apply. Clear them so none is left stuck on.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              // Random has no word blanks to act on at Level 6; Hide refs has
+              // no box to hide there. Specialty and Reference both stay usable.
+              if(i===5){ setModeRandom(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -60156,26 +60219,27 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
-            {modeSpecialty && (
+            {modeSpecialty && level!==5 && (
               <label className={'mode-toggle'+(hideRefs?' mode-on':'')}>
                 <input type="checkbox" checked={hideRefs} onChange={()=>{ setHideRefs(v=>!v); reset(); }}/>
                 <span className="mode-icon">🙈</span> Hide refs
                 <span className="mode-tip">Removes the verse-number boxes entirely</span>
               </label>
             )}
-            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty} onChange={toggleRef}/>
+            <label className={'mode-toggle'+(modeRef?' mode-on':'')+((modeRandom||modeSpecialty||kwMode)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRef} disabled={modeRandom||modeSpecialty||kwMode} onChange={toggleRef}/>
               <span className="mode-icon">🔖</span> Reference
-              <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
+              <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
-                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef}
+                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -60219,7 +60283,7 @@ function App({ onScore }){
                   <div className="ch-heading">{chLabel(ch)}</div>
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
-                      segOpts={segOpts} ans={ans} hinted={hinted}
+                      segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
