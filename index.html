@@ -823,7 +823,8 @@ window.wardifyLogScore = (function(){
     if(level !== 5 && level !== 6){
       reason = 'Points only awarded at Levels 5 and 6 (current level ' + level + ')';
     } else {
-      // Per-verse: 0.05 per blank, only if verse is perfect AND unhinted, once per verse per day.
+      // Per-verse: 0.05 per blank (0.06 at Level 6), only if the verse is perfect
+      // AND unhinted, once per verse per day per level.
       // Custom-verse selection and passage-range selection both count at the same rate.
       (perfectVerses || []).forEach(function(ref){
         if(verseUsedToday('mainframe' + level, ref)){
@@ -831,7 +832,8 @@ window.wardifyLogScore = (function(){
           return;
         }
         var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
-        pts += blanks * 0.05;
+        // Level 6 is harder — one box for the whole verse, no word boundaries.
+        pts += blanks * (level === 6 ? 0.06 : 0.05);
         markVerseUsed('mainframe' + level, ref);
         creditedVerses++;
       });
@@ -4265,8 +4267,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -8428,7 +8444,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -12252,8 +12276,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -16281,7 +16319,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -21081,8 +21127,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -25159,7 +25219,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -28195,8 +28263,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -32231,7 +32313,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -35368,8 +35458,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -39162,7 +39266,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -42080,8 +42192,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -45859,7 +45985,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -48711,8 +48845,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -52226,7 +52374,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
@@ -55334,8 +55490,22 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
             const wBad=checked&&!wOk;
             return (
               <span key={i}>
-                <textarea value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
+                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
                   onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                  onKeyDown={e=>{
+                    // Enter jumps to the next verse's box. Shift+Enter still
+                    // inserts a real newline.
+                    if(e.key==='Enter' && !e.shiftKey){
+                      e.preventDefault();
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const bi=boxes.indexOf(e.target);
+                      if(bi>=0 && bi<boxes.length-1){
+                        const nx=boxes[bi+1];
+                        nx.focus();
+                        try { nx.setSelectionRange(nx.value.length, nx.value.length); } catch(_){}
+                      }
+                    }
+                  }}
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
                   name={`q_${wk}`} placeholder="Type the whole verse…"
                   style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
@@ -59118,7 +59288,15 @@ function App({ onScore }){
   // verses still in range keep their text and the rest simply stop being
   // rendered. The seed is kept on purpose: reseeding re-picks which words
   // are blanked and would desync everything already entered.
-  function rangeChange(){ setChk(false); setScore(null); setCustomVerses(null); }
+  function rangeChange(){
+    // Typing survives a range change ONLY while the round is unsubmitted.
+    // Once Check has run, changing the range starts clean: otherwise a
+    // checked chapter could sit overnight and be re-submitted the next day
+    // (after the daily verse locks reset) by nudging the range one verse,
+    // re-scoring the whole thing with no typing.
+    if(chk){ setAns({}); setHinted({}); }
+    setChk(false); setScore(null); setCustomVerses(null);
+  }
   function toggleRandom(){
     if(!modeRandom){ setModeSpecialty(false); setModeRef(false); }
     setModeRandom(v=>!v); reset();
