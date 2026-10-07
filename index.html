@@ -8735,7 +8735,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -8748,8 +8748,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -16700,7 +16700,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -16713,8 +16713,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -25690,7 +25690,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -25703,8 +25703,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -32874,7 +32874,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -32887,8 +32887,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -39914,7 +39914,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -39927,8 +39927,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -46723,7 +46723,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -46736,8 +46736,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -53202,7 +53202,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -53215,8 +53215,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -60206,7 +60206,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -60219,8 +60219,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
