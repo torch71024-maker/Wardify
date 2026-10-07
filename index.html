@@ -591,6 +591,11 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 </style>
 <style id="wfy-refmode-style">
 .wfy-ref-label{min-width:5.6rem;color:var(--c-accent);font-weight:600;white-space:nowrap;font-size:.66rem}
+/* Keyword blanks are purple instead of the usual yellow accent. Scoped so
+   correct / incorrect / hinted shading always wins over it. */
+input.blank.kw-blank:not(.ok):not(.bad):not(.hinted){border-bottom-color:#a855f7}
+:root.theme-light input.blank.kw-blank:not(.ok):not(.bad):not(.hinted){border-bottom-color:#7c3aed}
+:root[data-wfy-theme=light] input.blank.kw-blank:not(.ok):not(.bad):not(.hinted){border-bottom-color:#7c3aed}
 </style>
 </head>
 <body>
@@ -813,7 +818,7 @@ window.wardifyLogScore = (function(){
       localStorage.setItem('wfy_dedupe_reset_v2', '1');
     }
   } catch(e){}
-  function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode, allChapters){
+  function logMainframe(level, correct, total, perfectVerses, verseBlankCounts, selMode, allChapters, verseKeywordCounts){
     var pct = total > 0 ? correct / total : 0;
     var pts = 0;
     var reason = '';
@@ -834,6 +839,12 @@ window.wardifyLogScore = (function(){
         var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
         // Level 6 is harder — one box for the whole verse, no word boundaries.
         pts += blanks * (level === 6 ? 0.06 : 0.05);
+        // Level 6 Keywords mode: 0.5 per keyword, on top of the word points.
+        // Only verses whose keyword box was correct reach this point.
+        // Gated on level 6 here as well as in check(), so a malformed call
+        // from anywhere else can never award the keyword bonus.
+        var kwN = (level === 6 && verseKeywordCounts && verseKeywordCounts[ref]) || 0;
+        if(kwN) pts += kwN * 0.5;
         markVerseUsed('mainframe' + level, ref);
         creditedVerses++;
       });
@@ -3329,6 +3340,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -4232,7 +4268,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -4274,7 +4310,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -4291,6 +4327,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -4303,7 +4369,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -8369,6 +8435,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -8493,7 +8560,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -8524,15 +8592,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -8645,18 +8724,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -8672,6 +8758,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -8694,7 +8787,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -11390,6 +11483,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -12241,7 +12359,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -12283,7 +12401,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -12300,6 +12418,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -12312,7 +12460,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -16244,6 +16392,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -16368,7 +16517,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -16399,15 +16549,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -16520,18 +16681,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -16547,6 +16715,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -16569,7 +16744,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -20241,6 +20416,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -21092,7 +21292,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -21134,7 +21334,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -21151,6 +21351,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -21163,7 +21393,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -25144,6 +25374,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -25268,7 +25499,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -25299,15 +25531,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -25420,18 +25663,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -25447,6 +25697,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -25469,7 +25726,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -27377,6 +27634,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -28228,7 +28510,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -28270,7 +28552,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -28287,6 +28569,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -28299,7 +28611,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -32238,6 +32550,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -32362,7 +32675,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -32393,15 +32707,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -32514,18 +32839,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -32541,6 +32873,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -32563,7 +32902,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -34572,6 +34911,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -35423,7 +35787,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -35465,7 +35829,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -35482,6 +35846,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -35494,7 +35888,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -39191,6 +39585,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -39315,7 +39710,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -39346,15 +39742,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -39464,18 +39871,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -39491,6 +39905,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -39513,7 +39934,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -41306,6 +41727,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -42157,7 +42603,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -42199,7 +42645,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -42216,6 +42662,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -42228,7 +42704,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -45910,6 +46386,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -46034,7 +46511,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -46065,15 +46543,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -46183,18 +46672,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -46210,6 +46706,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -46232,7 +46735,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -47959,6 +48462,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -48810,7 +49338,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -48852,7 +49380,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -48869,6 +49397,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -48881,7 +49439,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -52299,6 +52857,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -52423,7 +52982,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -52454,15 +53014,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -52572,18 +53143,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -52599,6 +53177,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -52621,7 +53206,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -54604,6 +55189,31 @@ function onSpace(e){
   const i=all.indexOf(e.target);
   if(i>=0&&i<all.length-1) all[i+1].focus();
 }
+/* ── Keyword helpers ──
+   KEY_WORDS holds every word that appears in exactly ONE verse of this book.
+   A verse's keywords are its words that are in that set, in reading order. */
+function isKeyword(core){
+  const c=(core||'').replace(/[^a-zA-Z]/g,'').toLowerCase();
+  return !!c && KEY_WORDS.has(c);
+}
+function verseKeywords(text){
+  const out=[];
+  (text||'').split(/[\s\u2014\u2013]+/).forEach(function(w){
+    const c=w.replace(/[^a-zA-Z]/g,'').toLowerCase();
+    if(c && KEY_WORDS.has(c)) out.push(c);
+  });
+  return out;
+}
+/* Commas or spaces both separate. Case and punctuation ignored.
+   Order and count must both match. */
+function matchKeywords(input, list){
+  const got=(input||'').split(/[,\s]+/)
+    .map(function(x){ return x.replace(/[^a-zA-Z]/g,'').toLowerCase(); })
+    .filter(Boolean);
+  if(got.length!==list.length) return false;
+  for(let i=0;i<list.length;i++){ if(got[i]!==list[i]) return false; }
+  return true;
+}
 const LEVELS=[
   {label:'Level 1', desc:'~25% of content words removed'},
   {label:'Level 2', desc:'~50% of content words removed'},
@@ -55455,7 +56065,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -55497,7 +56107,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     // inserts a real newline.
                     if(e.key==='Enter' && !e.shiftKey){
                       e.preventDefault();
-                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled])'));
+                      const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
                       const bi=boxes.indexOf(e.target);
                       if(bi>=0 && bi<boxes.length-1){
                         const nx=boxes[bi+1];
@@ -55514,6 +56124,36 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
                 {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {kwMode && (()=>{
+                  const kws=verseKeywords(s.core);
+                  if(!kws.length) return null;   // no keywords in this verse: no box
+                  const kk=`${ch}-${verse.v}-kw`;
+                  const kval=ans[kk]||'';
+                  const kOk=checked&&matchKeywords(kval,kws);
+                  const kBad=checked&&!kOk;
+                  return (
+                    <span style={{display:'block',marginTop:'.45rem'}}>
+                      <input className="wfy-kwbox" value={kval}
+                        onChange={e=>setAns(kk,e.target.value)} disabled={checked}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                        name={`q_${kk}`} placeholder={'Keywords in order · '+kws.length}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter'){
+                            e.preventDefault();
+                            const boxes=Array.from(document.querySelectorAll('textarea.wfy-whole:not([disabled]), input.wfy-kwbox:not([disabled])'));
+                            const bi=boxes.indexOf(e.target);
+                            if(bi>=0 && bi<boxes.length-1){ boxes[bi+1].focus(); }
+                          }
+                        }}
+                        style={{width:'100%',boxSizing:'border-box',fontFamily:'inherit',
+                          fontSize:'.9rem',padding:'.35rem .6rem',borderRadius:6,outline:'none',
+                          color:'var(--c-title)',
+                          background:kOk?'rgba(80,200,120,.16)':kBad?'rgba(220,80,80,.16)':'var(--c-input)',
+                          border:'1px solid '+(kOk?'#50c878':kBad?'#e05555':'#a855f7')}}/>
+                      {kBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.25rem'}}>{kws.join(', ')}</span>}
+                    </span>
+                  );
+                })()}
               </span>
             );
           }
@@ -55526,7 +56166,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           return (
             <span key={i}>
               {s.pre}
-              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')}
+              <input className={'blank'+(isOk?' ok':isBad?' bad':wasHinted&&!checked?' hinted':'')+(isKeyword(s.core)?' kw-blank':'')}
                 style={{width:w+'px'}} value={val}
                 onChange={e=>setAns(k,e.target.value)} onKeyDown={onSpace} disabled={checked}
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
@@ -59213,6 +59853,7 @@ function App({ onScore }){
   const [modeSpecialty,setModeSpecialty]=useState(false);
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
+  const [kwMode,setKwMode]=useState(false);
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -59337,7 +59978,8 @@ function App({ onScore }){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
-    const verseBlankCounts={}; // ref -> blank count (for points = 0.05 * blanks)
+    const verseBlankCounts={}; // ref -> blank count (for points = rate * blanks)
+    const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
@@ -59368,15 +60010,26 @@ function App({ onScore }){
         });
       }
       // Verse earns points only if all correct AND no hints
-      if(verseCorrect===verseBlanks && !verseHinted){
+      // Level 6 Keywords mode: a wrong keyword box disqualifies the verse.
+      // Verses with no keywords have no box and are not gated.
+      let kwCount=0, kwOk=true;
+      if(whole && kwMode && level===5){
+        const kws=verseKeywords(verse.t);
+        if(kws.length){
+          kwCount=kws.length;
+          kwOk=matchKeywords(ans[`${verse.ch}-${verse.v}-kw`], kws);
+        }
+      }
+      if(verseCorrect===verseBlanks && !verseHinted && kwOk){
         perfectVerses.push(ref);
         verseBlankCounts[ref]=verseBlanks;
+        if(kwCount) verseKeywordCounts[ref]=kwCount;
       }
     });
     setScore({c,tot}); setChk(true);
     // Log per-verse points (level 5 only)
     if(window.wardifyLogScore){
-      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1);
+      window.wardifyLogScore.mainframe((level||0)+1, c, tot, perfectVerses, verseBlankCounts, customVerses?'custom':'range', !customVerses && sChIdx===0 && eChIdx===CHAPTERS_DATA.length-1, verseKeywordCounts);
     }
   }
   const sc=score?(score.c===score.tot?'perfect':score.c>=score.tot*.7?'good':'low'):'';
@@ -59486,18 +60139,25 @@ function App({ onScore }){
         <div className="level-bar" style={{marginTop:'1rem'}}>
           <button className={'lv-btn'+(level===null?' active':'')} onClick={()=>{ setLevel(null); setModeRef(false); reset(); }}>📖 Read</button>
           {LEVELS.map((l,i)=>(
-            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{ setLevel(i); reset(); }}>{l.label}</button>
+            <button key={i} className={'lv-btn'+(level===i?' active':'')} onClick={()=>{
+              setLevel(i);
+              // Level 6 (index 5) has no word blanks, so Random, Specialty and
+              // Hide refs cannot apply. Clear them so none is left stuck on.
+              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              else { setKwMode(false); }
+              reset();
+            }}>{l.label}</button>
           ))}
         </div>
         {level!==null && (
           <div className="mode-bar">
-            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+(modeSpecialty?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty} onChange={toggleRandom}/>
+            <label className={'mode-toggle'+(modeRandom?' mode-on':'')+((modeSpecialty||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeRandom} disabled={modeSpecialty||level===5} onChange={toggleRandom}/>
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -59513,6 +60173,13 @@ function App({ onScore }){
               <span className="mode-icon">🔖</span> Reference
               <span className="mode-tip">Verses shuffled · Full reference given · every word removed</span>
             </label>
+            {level===5 && (
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')}>
+                <input type="checkbox" checked={kwMode} onChange={()=>{ setKwMode(v=>!v); reset(); }}/>
+                <span className="mode-icon">🔑</span> Keywords
+                <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
+              </label>
+            )}
           </div>
         )}
         {level===null
@@ -59535,7 +60202,7 @@ function App({ onScore }){
           ? <div>
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
-                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums}
+                  <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
