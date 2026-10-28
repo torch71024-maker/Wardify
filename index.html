@@ -3279,6 +3279,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -4270,9 +4286,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -4280,7 +4295,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -8526,7 +8541,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -8733,7 +8749,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -8746,8 +8762,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -8764,9 +8780,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -11430,6 +11446,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -12369,9 +12401,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -12379,7 +12410,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -16491,7 +16522,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -16698,7 +16730,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -16711,8 +16743,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -16729,9 +16761,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -20371,6 +20403,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -21310,9 +21358,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -21320,7 +21367,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -25481,7 +25528,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -25688,7 +25736,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -25701,8 +25749,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -25719,9 +25767,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -27597,6 +27645,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -28536,9 +28600,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -28546,7 +28609,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -32665,7 +32728,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -32872,7 +32936,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -32885,8 +32949,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -32903,9 +32967,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -34882,6 +34946,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -35821,9 +35901,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -35831,7 +35910,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -39708,7 +39787,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -39912,7 +39992,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -39925,8 +40005,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -39943,9 +40023,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -41706,6 +41786,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -42645,9 +42741,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -42655,7 +42750,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -46517,7 +46612,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -46721,7 +46817,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -46734,8 +46830,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -46752,9 +46848,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -48449,6 +48545,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -49388,9 +49500,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -49398,7 +49509,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -52996,7 +53107,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -53200,7 +53312,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -53213,8 +53325,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -53231,9 +53343,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
@@ -55184,6 +55296,22 @@ function buildSegs(text, level, opts={}){
   // no word-count or word-length leak. `words` is the scorable word count,
   // carried through so Level 6 earns at the same rate as Level 5.
   if(level===6){
+    // Specialty at Level 6: give the opening words until the verse is
+    // unique, then one box for everything after them. protectedPfx was
+    // already computed above from VERSE_UNIQUE_PREFIX.
+    if(protectedPfx.size){
+      let cut=-1;
+      protectedPfx.forEach(function(i){ if(i>cut) cut=i; });
+      const tail=words.slice(cut+1);
+      // If the prefix swallowed the whole verse there is nothing left to
+      // type, so fall back to boxing all of it.
+      if(tail.filter(w=>parseWord(w).core).length > 0){
+        const segs=words.slice(0,cut+1).map(w=>({type:'text',value:w}));
+        segs.push({type:'whole', core:tail.join(' '), idx:0,
+                   words: tail.filter(w=>parseWord(w).core).length});
+        return segs;
+      }
+    }
     return [{type:'whole', core:text, idx:0,
              words: words.filter(w=>parseWord(w).core).length}];
   }
@@ -56123,9 +56251,8 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
-  // At Level 6 the verses are shuffled when Specialty is on, so the full
-  // reference has to be printed or the verse cannot be identified at all.
-  const l6ref = level===6 && !!segOpts.specialty;
+  // At Level 6 + Specialty the prompt is the verse's unique opening prefix,
+  // supplied by buildSegs as leading text segs — not the reference.
   const segs = useMemo(()=>buildSegs(verse.t, level, opts), [verse.t, level, verseSeed, segOpts.specialty]);
   const vnKey=`${ch}-${verse.v}-vnum`;
   const vnVal=ans[vnKey]||'';
@@ -56133,7 +56260,7 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
   const vnBad=checked && norm(vnVal)!==String(verse.v);
   return (
     <div className="verse">
-      {(refMode || l6ref) ? (
+      {refMode ? (
         <span className="vnum static-vnum wfy-ref-label" title="Verse reference">
           {(typeof chLabel==='function'?chLabel(ch):'Ch '+ch)+':'+verse.v}
         </span>
@@ -60000,7 +60127,8 @@ function App({ onScore }){
     setModeRandom(v=>!v); reset();
   }
   function toggleSpecialty(){
-    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); }
+    // Specialty is exclusive with Random, Reference AND Keywords.
+    if(!modeSpecialty){ setModeRandom(false); setModeRef(false); setKwMode(false); }
     setHideRefs(false);
     setModeSpecialty(v=>!v); reset();
   }
@@ -60204,7 +60332,7 @@ function App({ onScore }){
               // Hide refs cannot apply. Clear them so none is left stuck on.
               // Random has no word blanks to act on at Level 6; Hide refs has
               // no box to hide there. Specialty and Reference both stay usable.
-              if(i===5){ setModeRandom(false); setModeSpecialty(false); setHideRefs(false); }
+              if(i===5){ setModeRandom(false); setHideRefs(false); setKwMode(kw=>modeSpecialty?false:kw); }
               else { setKwMode(false); }
               reset();
             }}>{l.label}</button>
@@ -60217,8 +60345,8 @@ function App({ onScore }){
               <span className="mode-icon">🎲</span> Random
               <span className="mode-tip">Words blanked randomly at each level's rate</span>
             </label>
-            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+((modeRandom||level===5)?' mode-disabled':'')}>
-              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom||level===5} onChange={toggleSpecialty}/>
+            <label className={'mode-toggle'+(modeSpecialty?' mode-on':'')+(modeRandom?' mode-disabled':'')}>
+              <input type="checkbox" checked={modeSpecialty} disabled={modeRandom} onChange={toggleSpecialty}/>
               <span className="mode-icon">⭐</span> Specialty
               <span className="mode-tip">Verses shuffled · Opening words given until verse is unique</span>
             </label>
@@ -60235,9 +60363,9 @@ function App({ onScore }){
               <span className="mode-tip">Verses shuffled · Full reference given</span>
             </label>
             {level===5 && (
-              <label className={'mode-toggle'+(kwMode?' mode-on':'')+(modeRef?' mode-disabled':'')}>
-                <input type="checkbox" checked={kwMode} disabled={modeRef}
-                  onChange={()=>{ if(!kwMode) setModeRef(false); setKwMode(v=>!v); reset(); }}/>
+              <label className={'mode-toggle'+(kwMode?' mode-on':'')+((modeRef||modeSpecialty)?' mode-disabled':'')}>
+                <input type="checkbox" checked={kwMode} disabled={modeRef||modeSpecialty}
+                  onChange={()=>{ if(!kwMode){ setModeRef(false); setModeSpecialty(false); } setKwMode(v=>!v); reset(); }}/>
                 <span className="mode-icon">🔑</span> Keywords
                 <span className="mode-tip">Also type each verse's keywords, in order · 0.5 each</span>
               </label>
