@@ -825,11 +825,12 @@ window.wardifyLogScore = (function(){
     var attempted = (perfectVerses || []).length;
     var creditedVerses = 0;
     var duplicateVerses = 0;
-    if(level !== 5 && level !== 6){
-      reason = 'Points only awarded at Levels 5 and 6 (current level ' + level + ')';
+    if(!(level >= 1 && level <= 6)){
+      reason = 'Points only awarded at Levels 1-6 (current level ' + level + ')';
     } else {
-      // Per-verse: 0.05 per blank (0.06 at Level 6), only if the verse is perfect
-      // AND unhinted, once per verse per day per level.
+      // Per-verse: (level x 0.01) per blank — 0.01 at Level 1 up to 0.06 at
+      // Level 6 — only if the verse is perfect AND unhinted, once per verse
+      // per day PER LEVEL (the lock key is 'mainframe' + level).
       // Custom-verse selection and passage-range selection both count at the same rate.
       (perfectVerses || []).forEach(function(ref){
         if(verseUsedToday('mainframe' + level, ref)){
@@ -837,8 +838,8 @@ window.wardifyLogScore = (function(){
           return;
         }
         var blanks = (verseBlankCounts && verseBlankCounts[ref]) || 0;
-        // Level 6 is harder — one box for the whole verse, no word boundaries.
-        pts += blanks * (level === 6 ? 0.06 : 0.05);
+        // Rate rises with the level: 0.01 at Level 1 through 0.06 at Level 6.
+        pts += blanks * (level * 0.01);
         // Level 6 Keywords mode: 0.5 per keyword, on top of the word points.
         // Only verses whose keyword box was correct reach this point.
         // Gated on level 6 here as well as in check(), so a malformed call
@@ -896,9 +897,6 @@ window.wardifyLogScore = (function(){
       countsForAvg=0;
     } else if(correct===0){
       reason='No correct answers';
-    } else if(chapterCount<4){
-      reason='Points require 4+ chapters selected (only '+chapterCount+' selected)';
-      countsForAvg=0;
     } else if(remaining<=0){
       reason='Daily cap reached ('+limit+' pts/day for '+tool+')';
     } else {
