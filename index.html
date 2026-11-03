@@ -4282,7 +4282,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -4315,12 +4315,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -4342,7 +4344,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -8452,6 +8465,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -8520,7 +8546,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -8533,7 +8559,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -8575,7 +8603,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -8583,6 +8614,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -8810,6 +8842,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -8827,6 +8860,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -8835,7 +8869,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -12397,7 +12434,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -12430,12 +12467,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -12457,7 +12496,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -16433,6 +16483,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -16501,7 +16564,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -16514,7 +16577,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -16556,7 +16621,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -16564,6 +16632,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -16791,6 +16860,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -16808,6 +16878,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -16816,7 +16887,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -21354,7 +21428,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -21387,12 +21461,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -21414,7 +21490,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -25439,6 +25526,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -25507,7 +25607,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -25520,7 +25620,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -25562,7 +25664,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -25570,6 +25675,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -25797,6 +25903,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -25814,6 +25921,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -25822,7 +25930,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -28596,7 +28707,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -28629,12 +28740,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -28656,7 +28769,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -32639,6 +32763,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -32707,7 +32844,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -32720,7 +32857,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -32762,7 +32901,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -32770,6 +32912,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -32997,6 +33140,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -33014,6 +33158,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -33022,7 +33167,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -35897,7 +36045,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -35930,12 +36078,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -35957,7 +36107,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -39698,6 +39859,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -39766,7 +39940,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -39779,7 +39953,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -39821,7 +39997,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -39829,6 +40008,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -40053,6 +40233,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -40070,6 +40251,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -40078,7 +40260,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -42737,7 +42922,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -42770,12 +42955,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -42797,7 +42984,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -46523,6 +46721,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -46591,7 +46802,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -46604,7 +46815,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -46646,7 +46859,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -46654,6 +46870,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -46878,6 +47095,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -46895,6 +47113,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -46903,7 +47122,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -49496,7 +49718,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -49529,12 +49751,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -49556,7 +49780,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -53018,6 +53253,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -53086,7 +53334,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -53099,7 +53347,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -53141,7 +53391,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -53149,6 +53402,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -53373,6 +53627,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -53390,6 +53645,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -53398,7 +53654,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
@@ -56247,7 +56506,7 @@ function ReadingVerse({verse, ch, showJump}){
     </div>
   );
 }
-function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false}){
+function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refMode=false, hideVnum=false, kwMode=false, preChecked=false, onPreCheck}){
   const verseSeed = segOpts.seed != null ? hashSeed(segOpts.seed, `${ch}-${verse.v}`) : null;
   const uniquePrefix = VERSE_UNIQUE_PREFIX[`${ch}-${verse.v}`] ?? 5;
   const opts = {...segOpts, seed: verseSeed, uniquePrefix};
@@ -56280,12 +56539,14 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
           if(s.type==='whole'){
             const wk=`${ch}-${verse.v}-0`;
             const wval=ans[wk]||'';
-            const wOk=checked&&matchAnswer(wval,s.core);
-            const wBad=checked&&!wOk;
+            // Locked by the round-wide check OR by this verse's own Check.
+            const wLock=checked||preChecked;
+            const wOk=wLock&&matchAnswer(wval,s.core);
+            const wBad=wLock&&!wOk;
             return (
               <span key={i}>
-                <textarea className="wfy-whole" value={wval} rows={Math.max(2,Math.ceil(s.words/11))}
-                  onChange={e=>setAns(wk,e.target.value)} disabled={checked}
+                <textarea className="wfy-whole" value={wval} rows={4}
+                  onChange={e=>setAns(wk,e.target.value)} disabled={wLock}
                   onKeyDown={e=>{
                     // Enter jumps to the next verse's box. Shift+Enter still
                     // inserts a real newline.
@@ -56307,7 +56568,18 @@ function VerseRow({verse, ch, level, segOpts, ans, hinted, setAns, checked, refM
                     resize:'vertical',outline:'none',color:'var(--c-title)',
                     background:wOk?'rgba(80,200,120,.16)':wBad?'rgba(220,80,80,.16)':'var(--c-input)',
                     border:'1px solid '+(wOk?'#50c878':wBad?'#e05555':'var(--c-border)')}}/>
-                {wBad&&checked&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {wBad&&wLock&&<span className="hint-ans" style={{display:'block',marginTop:'.4rem'}}>{s.core}</span>}
+                {!checked && !preChecked && (
+                  <span style={{display:'block',marginTop:'.4rem'}}>
+                    <button className="btn btn-ghost"
+                      disabled={!wval.trim()}
+                      style={{fontSize:'.7rem',padding:'.22rem .9rem',
+                        opacity:wval.trim()?1:.4, cursor:wval.trim()?'pointer':'default'}}
+                      onClick={()=>{ if(wval.trim() && onPreCheck) onPreCheck(`${ch}-${verse.v}`); }}>
+                      Check
+                    </button>
+                  </span>
+                )}
                 {kwMode && (()=>{
                   const kws=verseKeywords(s.core);
                   if(!kws.length) return null;   // no keywords in this verse: no box
@@ -60038,6 +60310,19 @@ function App({ onScore }){
   const [modeRef,setModeRef]=useState(false);
   const [hideRefs,setHideRefs]=useState(false);
   const [kwMode,setKwMode]=useState(false);
+  // Verses individually checked at Level 6: `${ch}-${v}` -> true.
+  // These boxes are locked and show their verdict, but are not scored
+  // until the round is checked as a whole.
+  const [vChecked,setVChecked]=useState({});
+  // True when any answer belonging to this verse has non-blank text.
+  // Prefix matching is safe: '1-1-' is not a prefix of '1-10-5' or '11-1-5'.
+  function verseHasContent(verse){
+    const pfx=verse.ch+'-'+verse.v+'-';
+    for(const k in ans){
+      if(k.indexOf(pfx)===0 && String(ans[k]||'').trim()!=='') return true;
+    }
+    return false;
+  }
   const [quizSeed,setQuizSeed]=useState(()=>Math.floor(Math.random()*1e9));
   const [ans,setAns]=useState({});
   const [hinted,setHinted]=useState({});
@@ -60106,7 +60391,7 @@ function App({ onScore }){
     specialty: modeSpecialty,
   }),[modeRandom, modeSpecialty, quizSeed]);
   function newSeed(){ setQuizSeed(Math.floor(Math.random()*1e9)); }
-  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); }
+  function reset(){ setAns({}); setHinted({}); setChk(false); setScore(null); setVChecked({}); newSeed(); }
   function fullReset(){ setAns({}); setHinted({}); setChk(false); setScore(null); newSeed(); setCustomVerses(null); }
   // Narrowing or widening the passage must NOT discard typed answers.
   // Keys are `${ch}-${verse}-${idx}` and carry no range information, so
@@ -60119,7 +60404,9 @@ function App({ onScore }){
     // checked chapter could sit overnight and be re-submitted the next day
     // (after the daily verse locks reset) by nudging the range one verse,
     // re-scoring the whole thing with no typing.
-    if(chk){ setAns({}); setHinted({}); }
+    // Per-verse locks are cleared only when the typing they belong to is
+    // cleared, so a locked verse cannot be reopened by nudging the range.
+    if(chk){ setAns({}); setHinted({}); setVChecked({}); }
     setChk(false); setScore(null); setCustomVerses(null);
   }
   function toggleRandom(){
@@ -60161,7 +60448,10 @@ function App({ onScore }){
     if(vkey(CHAPTERS_DATA[eChIdx].ch,nv)<vkey(CHAPTERS_DATA[sChIdx].ch,sV)) return;
     setEV(nv); rangeChange();
   }
-  function check(){
+  // onlyTyped: score just the verses with something typed in them.
+  // Called explicitly from both buttons via arrow functions, never as a
+  // which would pass a truthy event object as onlyTyped.
+  function check(onlyTyped){
     let c=0, tot=0;
     // Per-verse tracking for points: which verses are perfect AND unhinted
     const perfectVerses=[]; // refs of verses eligible for points
@@ -60169,6 +60459,7 @@ function App({ onScore }){
     const verseKeywordCounts={}; // ref -> keyword count (Level 6 Keywords mode, 0.5 each)
     selVerses.forEach(verse=>{
       const ref=verse.ch+'-'+verse.v;
+      if(onlyTyped && !verseHasContent(verse)) return;   // untouched: not counted at all
       let verseBlanks=0, verseCorrect=0, verseHinted=false;
       // level is 0-based here: 5 means "Level 6", which has no verse-number box.
       if(!modeRef && !hideVnums && level!==5){
@@ -60393,6 +60684,7 @@ function App({ onScore }){
               {displayVerses.map(verse=>(
                 <div key={`${verse.ch}-${verse.v}`}>
                   <VerseRow verse={verse} ch={verse.ch} level={level+1} segOpts={segOpts} refMode={modeRef} hideVnum={hideVnums} kwMode={kwMode && level===5}
+                    preChecked={!!vChecked[verse.ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                     ans={ans} hinted={hinted} setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                 </div>
               ))}
@@ -60410,6 +60702,7 @@ function App({ onScore }){
                   {verses.map(verse=>(
                     <VerseRow key={`${ch}-${verse.v}`} verse={verse} ch={ch} level={level+1}
                       segOpts={segOpts} ans={ans} hinted={hinted} kwMode={kwMode && level===5}
+                      preChecked={!!vChecked[ch+'-'+verse.v]} onPreCheck={k=>setVChecked(p=>({...p,[k]:true}))}
                       setAns={(k,v)=>setAns(a=>({...a,[k]:v}))} checked={chk}/>
                   ))}
                 </div>
@@ -60418,7 +60711,10 @@ function App({ onScore }){
         {level!==null && <>
           <div className="btn-row">
             {!chk
-              ? <button className="btn btn-gold" onClick={check}>Check Answers</button>
+              ? <>
+                  <button className="btn btn-gold" onClick={()=>check(false)}>Check Answers</button>
+                  <button className="btn btn-ghost" onClick={()=>check(true)}>Check what I have</button>
+                </>
               : <button className="btn btn-gold" onClick={reset}>Try Again</button>}
             <button className="btn btn-ghost" onClick={reset}>Reset</button>
           </div>
