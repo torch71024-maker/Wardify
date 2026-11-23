@@ -589,6 +589,12 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 @keyframes bsk-pop{0%{transform:scale(1) rotate(0deg)}20%{transform:scale(1.12) rotate(-3deg)}50%{transform:scale(0.96) rotate(2deg)}75%{transform:scale(1.04) rotate(-1deg)}100%{transform:scale(1) rotate(0deg)}}
 @keyframes item-sink{0%{transform:scale(1) translateY(0);opacity:1}55%{transform:scale(0.32) translateY(16px);opacity:0.55}100%{transform:scale(0) translateY(28px);opacity:0}}
 </style>
+<style id="wfy-moretools-style">
+.wfy-more-tools{font-family:'Cinzel',serif;font-size:.86rem;font-weight:700;letter-spacing:.08em;padding:.6rem 1.35rem;border-radius:24px;border:1.5px solid rgba(255,230,150,.75);background:linear-gradient(135deg,#e6bf3c,#9a7410);color:#140e00;cursor:pointer;white-space:nowrap;box-shadow:0 0 0 3px rgba(201,162,39,.22),0 4px 18px rgba(201,162,39,.45);transition:transform .15s,box-shadow .15s,filter .15s}
+.wfy-more-tools:hover{transform:translateY(-2px);filter:brightness(1.1);box-shadow:0 0 0 4px rgba(201,162,39,.3),0 8px 26px rgba(201,162,39,.6)}
+.wfy-more-tools:active{transform:translateY(0)}
+@media(max-width:600px){.wfy-more-tools{font-size:.76rem;padding:.5rem 1rem}.top-nav:has(> .wfy-more-tools){position:static;display:flex;justify-content:flex-end;margin:0 0 .7rem}}
+</style>
 <style id="wfy-refmode-style">
 .wfy-ref-label{min-width:5.6rem;color:var(--c-accent);font-weight:600;white-space:nowrap;font-size:.66rem}
 /* Keyword blanks are purple instead of the usual yellow accent. Scoped so
@@ -8718,7 +8724,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — John</div>
       <div className="subtitle">New International Version</div>
@@ -16736,7 +16742,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Acts</div>
       <div className="subtitle">New International Version</div>
@@ -25779,7 +25785,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Matthew</div>
       <div className="subtitle">New International Version</div>
@@ -33016,7 +33022,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Luke</div>
       <div className="subtitle">New International Version</div>
@@ -40109,7 +40115,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Corinthians</div>
       <div className="subtitle">New International Version</div>
@@ -46971,7 +46977,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Galatians · Ephesians · Philippians · Colossians</div>
       <div className="subtitle">New International Version</div>
@@ -53503,7 +53509,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Romans · James</div>
       <div className="subtitle">New International Version</div>
@@ -60560,7 +60566,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
+        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
       </div>
       <div className="title">Wardify — Hebrews · 1 &amp; 2 Peter</div>
       <div className="subtitle">New International Version</div>
@@ -60960,6 +60966,7 @@ BOOKS.forEach(function(book){
 });
 function selectBook(bookId){
   localStorage.setItem('wardify_book',bookId);
+  try{ if(typeof wfyGetS==='function'){ var _ws=wfyGetS(); _ws.book=bookId; wfySetS(_ws); } }catch(e){}
   if(_pickerRaf){cancelAnimationFrame(_pickerRaf);_pickerRaf=null;}
   document.getElementById('wardify-loading').classList.add('show');
   setTimeout(function(){
@@ -61018,7 +61025,19 @@ function wardifySubmitName(){
   localStorage.setItem('wardify_player_name',val);
   window.wardifyPlayerName=val;
   document.getElementById('wardify-name-screen').style.display='none';
-  wardifyAfterName();
+  wardifyFirstBookPick();
+}
+/* First sign-in (name just entered): ask which book to begin in. */
+function wardifyFirstBookPick(){
+  wardifyStartTracker();
+  var tg=document.querySelector('#wardify-picker .wfy-tagline');
+  if(tg)tg.textContent='Which book would you like to begin in?';
+  var ft=document.querySelector('#wardify-picker .wfy-footer');
+  if(ft)ft.textContent='You can switch books any time in Settings.';
+  document.getElementById('wardify-loading').classList.remove('show');
+  document.getElementById('wardify-app').style.display='none';
+  document.getElementById('wardify-picker').style.display='flex';
+  startPickerAnim();
 }
 function wardifyAfterName(){
   wardifyStartTracker();
