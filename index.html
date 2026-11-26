@@ -589,12 +589,6 @@ input.blank{transition:background .2s,border-color .2s,color 1.2s ease}
 @keyframes bsk-pop{0%{transform:scale(1) rotate(0deg)}20%{transform:scale(1.12) rotate(-3deg)}50%{transform:scale(0.96) rotate(2deg)}75%{transform:scale(1.04) rotate(-1deg)}100%{transform:scale(1) rotate(0deg)}}
 @keyframes item-sink{0%{transform:scale(1) translateY(0);opacity:1}55%{transform:scale(0.32) translateY(16px);opacity:0.55}100%{transform:scale(0) translateY(28px);opacity:0}}
 </style>
-<style id="wfy-moretools-style">
-.wfy-more-tools{font-family:'Cinzel',serif;font-size:.86rem;font-weight:700;letter-spacing:.08em;padding:.6rem 1.35rem;border-radius:24px;border:1.5px solid rgba(255,230,150,.75);background:linear-gradient(135deg,#e6bf3c,#9a7410);color:#140e00;cursor:pointer;white-space:nowrap;box-shadow:0 0 0 3px rgba(201,162,39,.22),0 4px 18px rgba(201,162,39,.45);transition:transform .15s,box-shadow .15s,filter .15s}
-.wfy-more-tools:hover{transform:translateY(-2px);filter:brightness(1.1);box-shadow:0 0 0 4px rgba(201,162,39,.3),0 8px 26px rgba(201,162,39,.6)}
-.wfy-more-tools:active{transform:translateY(0)}
-@media(max-width:600px){.wfy-more-tools{font-size:.76rem;padding:.5rem 1rem}.top-nav:has(> .wfy-more-tools){position:static;display:flex;justify-content:flex-end;margin:0 0 .7rem}}
-</style>
 <style id="wfy-refmode-style">
 .wfy-ref-label{min-width:5.6rem;color:var(--c-accent);font-weight:600;white-space:nowrap;font-size:.66rem}
 /* Keyword blanks are purple instead of the usual yellow accent. Scoped so
@@ -2597,7 +2591,7 @@ const CHAPTERS_DATA = [
     {v:9,t:"Some claimed that he was. Others said, \"No, he only looks like him.\" But he himself insisted, \"I am the man.\""},
     {v:10,t:"\"How then were your eyes opened?\" they asked."},
     {v:11,t:"He replied, \"The man they call Jesus made some mud and put it on my eyes. He told me to go to Siloam and wash. So I went and washed, and then I could see.\""},
-    {v:12,t:"\"Where is this man?\" they asked. \"I don't know,\" he said."},
+    {v:12,t:"\"Where is this man?\" they asked him. \"I don't know,\" he said."},
     {v:13,t:"They brought to the Pharisees the man who had been blind."},
     {v:14,t:"Now the day on which Jesus had made the mud and opened the man's eyes was a Sabbath."},
     {v:15,t:"Therefore the Pharisees also asked him how he had received his sight. \"He put mud on my eyes,\" the man replied, \"and I washed, and now I see.\""},
@@ -8168,13 +8162,23 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    const query = val.trim().toLowerCase();
-    // Escape regex special chars, then wrap in word boundaries so
-    // "ate" matches "ate" but not "participate", "rate", etc.
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRe = new RegExp('\\b' + escaped + '\\b', 'i');
-    // Strip punctuation from verse text before testing, but preserve word structure
-    const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
       if(wordRe.test(normalize(vv.t))) refs.push({label:`John ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
@@ -8724,7 +8728,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — John</div>
       <div className="subtitle">New International Version</div>
@@ -16187,13 +16191,23 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    const query = val.trim().toLowerCase();
-    // Escape regex special chars, then wrap in word boundaries so
-    // "ate" matches "ate" but not "participate", "rate", etc.
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRe = new RegExp('\\b' + escaped + '\\b', 'i');
-    // Strip punctuation from verse text before testing, but preserve word structure
-    const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
       if(wordRe.test(normalize(vv.t))) refs.push({label:`Acts ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
@@ -16742,7 +16756,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Acts</div>
       <div className="subtitle">New International Version</div>
@@ -25230,13 +25244,23 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    const query = val.trim().toLowerCase();
-    // Escape regex special chars, then wrap in word boundaries so
-    // "ate" matches "ate" but not "participate", "rate", etc.
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRe = new RegExp('\\b' + escaped + '\\b', 'i');
-    // Strip punctuation from verse text before testing, but preserve word structure
-    const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
       if(wordRe.test(normalize(vv.t))) refs.push({label:`Matthew ${cd.ch}:${vv.v}`,ch:cd.ch,v:vv.v});
@@ -25785,7 +25809,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Matthew</div>
       <div className="subtitle">New International Version</div>
@@ -32467,13 +32491,23 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    const query = val.trim().toLowerCase();
-    // Escape regex special chars, then wrap in word boundaries so
-    // "ate" matches "ate" but not "participate", "rate", etc.
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRe = new RegExp('\\b' + escaped + '\\b', 'i');
-    // Strip punctuation from verse text before testing, but preserve word structure
-    const normalize = s => s.replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
       if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
@@ -33022,7 +33056,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Luke</div>
       <div className="subtitle">New International Version</div>
@@ -39579,13 +39613,26 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    // Strip all punctuation (dashes, quotes, periods, commas, etc.) before matching
-    const normalize = s => s.toLowerCase().replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ').replace(/\s+/g, ' ').trim();
-    const phrase = normalize(val.trim());
-    const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -40115,7 +40162,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Corinthians</div>
       <div className="subtitle">New International Version</div>
@@ -46441,13 +46488,26 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    // Strip all punctuation (dashes, quotes, periods, commas, etc.) before matching
-    const normalize = s => s.toLowerCase().replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ').replace(/\s+/g, ' ').trim();
-    const phrase = normalize(val.trim());
-    const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -46977,7 +47037,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Galatians · Ephesians · Philippians · Colossians</div>
       <div className="subtitle">New International Version</div>
@@ -52973,13 +53033,26 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    // Strip all punctuation (dashes, quotes, periods, commas, etc.) before matching
-    const normalize = s => s.toLowerCase().replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ').replace(/\s+/g, ' ').trim();
-    const phrase = normalize(val.trim());
-    const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -53509,7 +53582,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Romans · James</div>
       <div className="subtitle">New International Version</div>
@@ -60030,13 +60103,26 @@ function AnswerJudgeMaterialPage({ onBack }){
   function handleSearch(val){
     setSearchInput(val);
     if(!val.trim()){ setSearchRefs(null); return; }
-    // Strip all punctuation (dashes, quotes, periods, commas, etc.) before matching
-    const normalize = s => s.toLowerCase().replace(/[-–—"'"'.,;:!?(){}\[\]\/\\]/g, ' ').replace(/\s+/g, ' ').trim();
-    const phrase = normalize(val.trim());
-    const wordBoundaryRe = new RegExp('(?<![a-z])' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z])', 'i');
+    // Normalise BOTH sides the same way. The old code normalised only the
+    // verse text, so any punctuation typed could never match.
+    //   - apostrophes are dropped, so "don't" and "dont" agree
+    //   - every other non-alphanumeric run becomes one space
+    //   - runs of whitespace collapse, then trim and lowercase
+    // Word gaps survive, so \b still stops "ate" matching "participate".
+    const normalize = t => (t||'')
+      .replace(/['\u2018\u2019\u02BC]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toLowerCase();
+    const phrase = normalize(val);
+    if(!phrase){ setSearchRefs(null); return; }
+    // \b rather than a lookbehind: Safari only supports lookbehind from
+    // 16.4, and an older device would throw and break search entirely.
+    const wordRe = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'i');
     const refs = [];
     CHAPTERS_DATA.forEach(cd => cd.verses.forEach(vv => {
-      if(wordBoundaryRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
+      if(wordRe.test(normalize(vv.t))) refs.push({label:`${chLabel(cd.ch)}:${vv.v}`,ch:cd.ch,v:vv.v});
     }));
     setSearchRefs(refs);
   }
@@ -60566,7 +60652,7 @@ function App({ onScore }){
   return (
     <div className="wrap">
       <div className="top-nav">
-        <button className="wfy-more-tools" onClick={()=>setPage('tools')}>☰&nbsp; More Tools</button>
+        <button className="kq-nav-btn" onClick={()=>setPage('tools')}>More Tools</button>
       </div>
       <div className="title">Wardify — Hebrews · 1 &amp; 2 Peter</div>
       <div className="subtitle">New International Version</div>
@@ -60966,7 +61052,6 @@ BOOKS.forEach(function(book){
 });
 function selectBook(bookId){
   localStorage.setItem('wardify_book',bookId);
-  try{ if(typeof wfyGetS==='function'){ var _ws=wfyGetS(); _ws.book=bookId; wfySetS(_ws); } }catch(e){}
   if(_pickerRaf){cancelAnimationFrame(_pickerRaf);_pickerRaf=null;}
   document.getElementById('wardify-loading').classList.add('show');
   setTimeout(function(){
@@ -61025,19 +61110,7 @@ function wardifySubmitName(){
   localStorage.setItem('wardify_player_name',val);
   window.wardifyPlayerName=val;
   document.getElementById('wardify-name-screen').style.display='none';
-  wardifyFirstBookPick();
-}
-/* First sign-in (name just entered): ask which book to begin in. */
-function wardifyFirstBookPick(){
-  wardifyStartTracker();
-  var tg=document.querySelector('#wardify-picker .wfy-tagline');
-  if(tg)tg.textContent='Which book would you like to begin in?';
-  var ft=document.querySelector('#wardify-picker .wfy-footer');
-  if(ft)ft.textContent='You can switch books any time in Settings.';
-  document.getElementById('wardify-loading').classList.remove('show');
-  document.getElementById('wardify-app').style.display='none';
-  document.getElementById('wardify-picker').style.display='flex';
-  startPickerAnim();
+  wardifyAfterName();
 }
 function wardifyAfterName(){
   wardifyStartTracker();
